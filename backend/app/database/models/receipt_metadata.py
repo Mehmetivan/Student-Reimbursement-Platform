@@ -32,4 +32,4 @@ class ReceiptMetadata(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     
     # Relationships
-    receipt = relationship("Receipt", back_populates="metadata")
+    receipt = relationship("Receipt", back_populates="receipt_metadata")
