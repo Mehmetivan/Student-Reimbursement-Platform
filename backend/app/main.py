@@ -27,7 +27,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for frontend communication
+# CORS middleware for frontend communication. (betnween client req and api logic)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],  # Next.js default port
@@ -39,7 +39,7 @@ app.add_middleware(
 # Create all database tables
 Base.metadata.create_all(bind=engine)
 
-# Add this to app/main.py (after the existing imports and before @app.get("/"))
+
 
 
 
@@ -67,6 +67,9 @@ async def test_hash_layer(
     - Save to database if no duplicates found
     """
     
+    #additional layers will be added as the project progesses. Only layer 1 at the moment
+
+
     # Save uploaded file temporarily
     temp_path = Path("uploads") / "temp" / file.filename
     temp_path.parent.mkdir(parents=True, exist_ok=True)
