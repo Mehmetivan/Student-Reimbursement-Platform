@@ -12,7 +12,7 @@ from .database.models.request import Request
 from .database.models.receipt import Receipt
 from .database.models.receipt_metadata import ReceiptMetadata
 from .database.models.student_document import StudentDocument
-
+from .services.validation.exif_service import ExifService
 
 from fastapi import UploadFile, File, Depends
 from sqlalchemy.orm import Session
@@ -67,7 +67,7 @@ async def test_hash_layer(
     - Save to database if no duplicates found
     """
     
-    #additional layers will be added as the project progesses. Only layer 1 at the moment
+    #additional layers will be added as the project progesses. Only layer 1&2 at the moment
 
 
     # Save uploaded file temporarily
@@ -149,6 +149,157 @@ async def test_hash_layer(
         if temp_path.exists():
             temp_path.unlink()
 
+
+# LAYER 2 - EXIF METADATA ANALYSIS
+
+from .services.validation.exif_service import ExifService
+
+@app.post("/test/exif-layer")
+async def test_exif_layer(file: UploadFile = File(...)):
+    """
+    Test Layer 2: EXIF Metadata Analysis
+    
+    Upload an image to test:
+    - EXIF data extraction
+    - Editing software detection
+    - Mobile camera verification
+    - Photo age calculation
+    - Risk scoring
+    """
+    
+    # Save uploaded file temporarily
+    temp_path = Path("uploads") / "temp" / file.filename
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Save file
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Extract raw EXIF data first
+        raw_exif = ExifService.extract_exif(temp_path)
+        
+        # Run Layer 2 analysis
+        result = ExifService.analyze_exif(temp_path)
+        
+        # Add file info
+        result["filename"] = file.filename
+        result["file_size"] = temp_path.stat().st_size
+        
+        # Add raw EXIF data for testing
+        result["raw_exif_data"] = raw_exif
+        
+        # Add interpretation
+        if result["assessment"] == "high_risk":
+            result["message"] = "🚨 HIGH RISK: Image shows signs of editing or manipulation"
+        elif result["assessment"] == "medium_risk":
+            result["message"] = "⚠️ MEDIUM RISK: Some suspicious indicators detected"
+        else:
+            result["message"] = "✅ LOW RISK: Image appears legitimate"
+        
+        # Add detailed explanation
+        explanations = []
+        if result["has_editing_software"]:
+            explanations.append(f"Editing software detected: {result['editing_software']}")
+        if not result["exif_exists"]:
+            explanations.append("No EXIF data (possibly screenshot or heavily processed)")
+        if result["is_mobile_camera"]:
+            explanations.append(f"Photo taken with mobile device: {result['camera_model']}")
+        if result["photo_age_days"] and result["photo_age_days"] > 90:
+            explanations.append(f"Photo is {result['photo_age_days']} days old")
+        
+        result["explanation"] = explanations
+        
+        return result
+        
+    finally:
+        # Clean up temp file
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+@app.post("/test/combined-layers")
+async def test_combined_layers(
+    file: UploadFile = File(...),
+    student_id: int = 1,
+    db: Session = Depends(get_db)
+):
+    """
+    Test Layer 1 + Layer 2 Combined
+    
+    Upload a file to test complete validation:
+    - Layer 1: Hash & duplicate detection
+    - Layer 2: EXIF analysis
+    - Combined risk assessment
+    """
+    
+    # Save uploaded file temporarily
+    temp_path = Path("uploads") / "temp" / file.filename
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Save file
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Layer 1: Hash validation
+        layer1_result = await HashService.validate_file_integrity(
+            db=db,
+            file_path=temp_path,
+            student_id=student_id
+        )
+        
+        # Layer 2: EXIF analysis
+        layer2_result = ExifService.analyze_exif(temp_path)
+        
+        # Combine risk scores
+        total_risk = layer2_result["risk_score"]
+        
+        # Layer 1 adds to risk if fraud detected
+        if layer1_result["fraud_suspected"]:
+            total_risk += 0.9  # Almost certain fraud
+        elif layer1_result["is_duplicate"]:
+            total_risk += 0.3
+        
+        # Final decision
+        decision = {
+            "filename": file.filename,
+            "student_id": student_id,
+            "layer1": {
+                "sha256_hash": layer1_result["sha256_hash"],
+                "is_duplicate": layer1_result["is_duplicate"],
+                "fraud_suspected": layer1_result["fraud_suspected"]
+            },
+            "layer2": {
+                "exif_status": layer2_result["exif_status"],
+                "has_editing_software": layer2_result["has_editing_software"],
+                "is_mobile_camera": layer2_result["is_mobile_camera"],
+                "camera_model": layer2_result["camera_model"],
+                "risk_score": layer2_result["risk_score"]
+            },
+            "combined_risk_score": min(total_risk, 1.0),
+            "flags": layer1_result.get("flags", []) + layer2_result["flags"]
+        }
+        
+        # Decision logic
+        if total_risk >= 0.8:
+            decision["action"] = "reject"
+            decision["message"] = "🚫 REJECTED: High fraud risk detected"
+        elif total_risk >= 0.5:
+            decision["action"] = "review"
+            decision["message"] = "⚠️ FLAGGED FOR REVIEW: Suspicious indicators detected"
+        else:
+            decision["action"] = "approve"
+            decision["message"] = "✅ APPROVED: Passed Layer 1 and Layer 2 validation"
+        
+        return decision
+        
+    finally:
+        # Clean up temp file
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 @app.get("/")
 def root():
     return {
@@ -167,3 +318,8 @@ def health_check():
             "documents": str(settings.DOCUMENTS_DIR)
         }
     }
+
+#   cd C:\Users\mehme\student_reimbursement_platform\backend
+#   venv\Scripts\activate
+#   python -m uvicorn app.main:app --reload
+#   API docs (interactive): http://127.0.0.1:8000/docs
