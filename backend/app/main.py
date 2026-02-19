@@ -13,6 +13,7 @@ from .database.models.receipt import Receipt
 from .database.models.receipt_metadata import ReceiptMetadata
 from .database.models.student_document import StudentDocument
 from .services.validation.exif_service import ExifService
+from .services.validation.ocr_service import OCRService
 
 from fastapi import UploadFile, File, Depends
 from sqlalchemy.orm import Session
@@ -225,12 +226,13 @@ async def test_combined_layers(
     db: Session = Depends(get_db)
 ):
     """
-    Test Layer 1 + Layer 2 Combined
+    Test Layer 1 + Layer 2 Combined with Database Save
     
     Upload a file to test complete validation:
     - Layer 1: Hash & duplicate detection
     - Layer 2: EXIF analysis
     - Combined risk assessment
+    - Saves to database (receipts + receipt_metadata tables)
     """
     
     # Save uploaded file temporarily
@@ -242,63 +244,181 @@ async def test_combined_layers(
         with temp_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Layer 1: Hash validation
+        # ===== LAYER 1: Hash validation =====
         layer1_result = await HashService.validate_file_integrity(
             db=db,
             file_path=temp_path,
             student_id=student_id
         )
         
-        # Layer 2: EXIF analysis
-        layer2_result = ExifService.analyze_exif(temp_path)
+        # Check if rejected by Layer 1
+        if layer1_result["fraud_suspected"]:
+            return {
+                "action": "rejected",
+                "message": "🚫 FRAUD ALERT: This receipt was already submitted by another student!",
+                "layer1": layer1_result,
+                "database_saved": False
+            }
         
-        # Combine risk scores
+        if layer1_result["is_duplicate"]:
+            return {
+                "action": "rejected",
+                "message": "🚫 DUPLICATE: You already submitted this exact receipt before.",
+                "layer1": layer1_result,
+                "database_saved": False
+            }
+        
+        # ===== Layer 1 PASSED - Save to database =====
+        from datetime import datetime
+        import uuid
+        
+        # Create permanent file path
+        year = datetime.now().year
+        receipt_uuid = str(uuid.uuid4())
+        permanent_dir = settings.RECEIPTS_DIR / str(year)
+        permanent_dir.mkdir(parents=True, exist_ok=True)
+        permanent_path = permanent_dir / f"{receipt_uuid}.jpg"
+        
+        # Move file to permanent location
+        shutil.copy(temp_path, permanent_path)
+        
+        # Create request
+        from .database.models.request import Request as RequestModel, RequestStatus
+        new_request = RequestModel(
+            student_id=student_id,
+            comment="Test upload via combined layers",
+            status=RequestStatus.PENDING
+        )
+        db.add(new_request)
+        db.flush()
+        
+        # Save receipt
+        relative_file_path = f"uploads/receipts/{year}/{receipt_uuid}.jpg"
+        new_receipt = Receipt(
+            receipt_id=receipt_uuid,
+            student_id=student_id,
+            request_id=new_request.request_id,
+            file_path=relative_file_path,
+            sha256_hash=layer1_result["sha256_hash"]
+        )
+        db.add(new_receipt)
+        db.flush()
+        
+        # ===== LAYER 2: EXIF analysis =====
+        layer2_result = ExifService.analyze_exif(permanent_path)
+        
+        # Save Layer 2 results to database
+        from .services.metadata_service import MetadataService
+        
+        metadata = MetadataService.save_layer2_results(
+            db=db,
+            receipt_id=receipt_uuid,
+            layer2_analysis=layer2_result
+        )
+        
+        # Update combined risk score
+        MetadataService.update_combined_risk_score(
+            db=db,
+            receipt_id=receipt_uuid,
+            layer1_fraud=layer1_result["fraud_suspected"],
+            layer1_duplicate=layer1_result["is_duplicate"]
+        )
+        
+        db.commit()
+        
+        # ===== Calculate combined risk =====
         total_risk = layer2_result["risk_score"]
         
-        # Layer 1 adds to risk if fraud detected
-        if layer1_result["fraud_suspected"]:
-            total_risk += 0.9  # Almost certain fraud
-        elif layer1_result["is_duplicate"]:
-            total_risk += 0.3
+        # Decision logic
+        if total_risk >= 0.8:
+            action = "flagged_high_risk"
+            message = "🚨 HIGH RISK: Receipt saved but flagged for admin review"
+        elif total_risk >= 0.5:
+            action = "flagged_medium_risk"
+            message = "⚠️ MEDIUM RISK: Receipt saved but flagged for admin review"
+        else:
+            action = "approved"
+            message = "✅ APPROVED: Receipt passed all validation checks"
         
-        # Final decision
-        decision = {
+        # Final response
+        return {
             "filename": file.filename,
             "student_id": student_id,
+            "receipt_id": receipt_uuid,
+            "file_location": relative_file_path,
+            "action": action,
+            "message": message,
+            
             "layer1": {
                 "sha256_hash": layer1_result["sha256_hash"],
                 "is_duplicate": layer1_result["is_duplicate"],
                 "fraud_suspected": layer1_result["fraud_suspected"]
             },
+            
             "layer2": {
                 "exif_status": layer2_result["exif_status"],
                 "has_editing_software": layer2_result["has_editing_software"],
+                "editing_software": layer2_result.get("editing_software"),
                 "is_mobile_camera": layer2_result["is_mobile_camera"],
                 "camera_model": layer2_result["camera_model"],
-                "risk_score": layer2_result["risk_score"]
+                "flags": layer2_result["flags"],
+                "risk_score": layer2_result["risk_score"],
+                "assessment": layer2_result["assessment"]
             },
+            
             "combined_risk_score": min(total_risk, 1.0),
-            "flags": layer1_result.get("flags", []) + layer2_result["flags"]
+            "database_saved": True
         }
-        
-        # Decision logic
-        if total_risk >= 0.8:
-            decision["action"] = "reject"
-            decision["message"] = "🚫 REJECTED: High fraud risk detected"
-        elif total_risk >= 0.5:
-            decision["action"] = "review"
-            decision["message"] = "⚠️ FLAGGED FOR REVIEW: Suspicious indicators detected"
-        else:
-            decision["action"] = "approve"
-            decision["message"] = "✅ APPROVED: Passed Layer 1 and Layer 2 validation"
-        
-        return decision
         
     finally:
         # Clean up temp file
         if temp_path.exists():
             temp_path.unlink()
 
+@app.post("/test/ocr-layer")
+async def test_ocr_layer(file: UploadFile = File(...)):
+    """
+    Test Layer 3: OCR Text Extraction
+    
+    Upload a receipt image to test:
+    - Text extraction via Tesseract OCR
+    - STPT ID extraction (SERIE CARD:555845)
+    - Receipt ID extraction
+    - Confidence scoring
+    """
+    
+    # Save uploaded file temporarily
+    temp_path = Path("uploads") / "temp" / file.filename
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Save file
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Run OCR analysis
+        result = OCRService.analyze_receipt_text(temp_path)
+        
+        # Add file info
+        result["filename"] = file.filename
+        result["file_size"] = temp_path.stat().st_size
+        
+        # Add interpretation
+        if result["stpt_id"]:
+            result["message"] = f"✅ STPT ID FOUND: {result['stpt_id']} (confidence: {result['stpt_id_confidence']:.2f})"
+        else:
+            result["message"] = "⚠️ STPT ID NOT FOUND in receipt text"
+        
+        # Show what OCR saw (first 500 chars for readability)
+        if result["raw_text"]:
+            result["text_preview"] = result["raw_text"][:500] + "..." if len(result["raw_text"]) > 500 else result["raw_text"]
+        
+        return result
+        
+    finally:
+        # Clean up temp file
+        if temp_path.exists():
+            temp_path.unlink()            
 
 @app.get("/")
 def root():
