@@ -109,46 +109,49 @@ class MultiOCRService:
         try:
             start_time = __import__('time').time()
             
-            # Set credentials from environment variable
-            credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-            print(f"DEBUG: Credentials path: {credentials_path}") 
-            
-            if not credentials_path:
+            if not settings.GOOGLE_CLOUD_VISION_API_KEY:
                 return {
                     "ocr_engine": "Google Cloud Vision",
                     "success": False,
                     "raw_text": "",
                     "processing_time_seconds": 0,
-                    "error": "GOOGLE_APPLICATION_CREDENTIALS not set in environment"
-                }
-            
-            if not os.path.exists(credentials_path):
-                return {
-                    "ocr_engine": "Google Cloud Vision",
-                    "success": False,
-                    "raw_text": "",
-                    "processing_time_seconds": 0,
-                    "error": f"Credentials file not found at: {credentials_path}"
+                    "error": "API key not configured in .env file"
                 }
             
             # Read image file
             with open(file_path, 'rb') as image_file:
                 content = image_file.read()
             
-            # Initialize Vision API client (uses GOOGLE_APPLICATION_CREDENTIALS automatically)
-            client = vision.ImageAnnotatorClient()
+            # Use requests library instead of the client library
+            import requests
+            import base64
             
-            image = vision.Image(content=content)
+            # Encode image to base64
+            image_base64 = base64.b64encode(content).decode('utf-8')
             
-            # Perform text detection
-            response = client.text_detection(image=image)
-            texts = response.text_annotations
+            # Make API request
+            url = f"https://vision.googleapis.com/v1/images:annotate?key={settings.GOOGLE_CLOUD_VISION_API_KEY}"
             
-            if response.error.message:
-                raise Exception(response.error.message)
+            payload = {
+                "requests": [
+                    {
+                        "image": {"content": image_base64},
+                        "features": [{"type": "TEXT_DETECTION"}]
+                    }
+                ]
+            }
             
-            # First annotation contains full text
-            full_text = texts[0].description if texts else ""
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Extract text from response
+            if 'responses' in result and len(result['responses']) > 0:
+                text_annotations = result['responses'][0].get('textAnnotations', [])
+                full_text = text_annotations[0]['description'] if text_annotations else ""
+            else:
+                full_text = ""
             
             elapsed_time = __import__('time').time() - start_time
             
@@ -157,9 +160,10 @@ class MultiOCRService:
                 "success": True,
                 "raw_text": full_text,
                 "processing_time_seconds": round(elapsed_time, 2),
-                "detected_segments": len(texts) - 1 if texts else 0,  # -1 because first is full text
+                "detected_segments": len(text_annotations) - 1 if text_annotations else 0,
                 "error": None
             }
+        
         except Exception as e:
             logger.error(f"Google Cloud Vision error: {e}")
             return {

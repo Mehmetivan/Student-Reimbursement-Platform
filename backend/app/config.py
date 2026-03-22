@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # Google Cloud Vision API
-    GOOGLE_APPLICATION_CREDENTIALS: str | None = None
+   # Google Cloud Vision API
+    GOOGLE_CLOUD_VISION_API_KEY: str = ""
     
     # File Storage
     UPLOAD_DIR: Path = Path("uploads")
@@ -33,9 +33,6 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Set environment variable for Google Cloud (needed for their SDK)
-if settings.GOOGLE_APPLICATION_CREDENTIALS:
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = settings.GOOGLE_APPLICATION_CREDENTIALS
 
 # Create upload directories if they don't exist
 settings.RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)

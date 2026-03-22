@@ -29,6 +29,8 @@ from .database.models.receipt_ocr import ReceiptOCR
 from .database.models.receipt_anomalies import ReceiptAnomalies
 from .database.models.receipt_risk_assessment import ReceiptRiskAssessment
 from .services.fraud_detection_service import FraudDetectionService
+#from .services.validation.anomaly_service import AnomalyService
+from .services.validation.anomaly_service import AnomalyService
 
 from fastapi import UploadFile, File, Depends
 from sqlalchemy.orm import Session
@@ -512,6 +514,187 @@ async def test_compare_ocr(file: UploadFile = File(...)):
         # Clean up temp file
         if temp_path.exists():
             temp_path.unlink()                       
+
+
+@app.post("/test/anomaly-layer")
+async def test_anomaly_layer(
+    file: UploadFile = File(...),
+    student_id: int = 1,
+    db: Session = Depends(get_db)
+):
+    """
+    Test Layer 4: Receipt ID Structural Anomaly Detection
+    
+    Upload a receipt image to test:
+    - Receipt ID extraction (consensus between EasyOCR + Google Vision)
+    - Structural analysis (prefix, pattern, 2-grams)
+    - Duplicate detection (exact ID match)
+    - Pattern similarity search (90-day sliding window)
+    - Risk scoring based on cluster size
+    - Retroactive risk updates
+    
+    Perfect for testing the adaptive pattern learning system!
+    """
+    
+    temp_path = Path("uploads") / "temp" / file.filename
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Save file
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # ===== Run Multi-OCR to get text =====
+        ocr_comparison = MultiOCRService.compare_all_ocr(temp_path)
+        
+        # Get text from both engines
+        easyocr_text = ocr_comparison["easyocr"]["raw_text"]
+        google_text = ocr_comparison["google_cloud_vision"]["raw_text"]
+        
+        # ===== Create a temporary receipt record for testing =====
+        # In production, this would come from Layer 1-3 processing
+        from datetime import datetime
+        import uuid
+        
+        receipt_uuid = str(uuid.uuid4())
+        
+        # Mock receipt (just for testing Layer 4)
+        from .database.models.request import Request as RequestModel, RequestStatus
+        test_request = RequestModel(
+            student_id=student_id,
+            comment="Test Layer 4 - Anomaly Detection",
+            status=RequestStatus.PENDING
+        )
+        db.add(test_request)
+        db.flush()
+        
+        test_receipt = Receipt(
+            receipt_id=receipt_uuid,
+            student_id=student_id,
+            request_id=test_request.request_id,
+            file_path=f"test/{receipt_uuid}.jpg",
+            sha256_hash="test_hash_layer4"
+        )
+        db.add(test_receipt)
+        db.flush()
+        
+        # ===== Mock Layer 3 OCR data (needed for Layer 4 queries) =====
+        # Extract receipt ID first
+        extracted_id, ocr_conf = AnomalyService.extract_receipt_id_from_ocr(
+            easyocr_text,
+            google_text
+        )
+        
+        if extracted_id:
+            mock_ocr = ReceiptOCR(
+                receipt_id=receipt_uuid,
+                ocr_engine_used="consensus",
+                extracted_receipt_id=extracted_id,
+                raw_ocr_text=google_text[:500]
+            )
+            db.add(mock_ocr)
+            db.flush()
+        
+        # ===== Run Layer 4 Analysis =====
+        layer4_result = AnomalyService.analyze_receipt_id(
+            db=db,
+            receipt_id=receipt_uuid,
+            easyocr_text=easyocr_text,
+            google_vision_text=google_text
+        )
+        
+        # Commit all changes
+        db.commit()
+        
+        # ===== Build Response =====
+        if not layer4_result["success"]:
+            return {
+                "action": "error",
+                "message": f"❌ Layer 4 Error: {layer4_result.get('error', 'Unknown error')}",
+                "layer4": layer4_result,
+                "receipt_id": receipt_uuid,
+                "filename": file.filename
+            }
+        
+        # Interpret results
+        assessment = layer4_result["assessment"]
+        risk = layer4_result["layer4_risk_score"]
+        
+        if layer4_result["is_duplicate"]:
+            message = f"🚨 DUPLICATE FRAUD: This receipt ID was already submitted! (Original: {layer4_result['original_receipt_id']})"
+            action = "rejected_duplicate"
+        elif assessment == "validated_cluster":
+            message = f"✅ VALIDATED: {layer4_result['similar_pattern_count']+1} receipts share this pattern (LOW RISK)"
+            action = "approved_validated"
+        elif assessment == "triplet_pattern":
+            message = f"⚠️ EMERGING PATTERN: {layer4_result['similar_pattern_count']+1} receipts found (MEDIUM RISK)"
+            action = "flagged_medium"
+        elif assessment == "pair_pattern":
+            message = f"⚠️ PARTIAL VALIDATION: 1 other similar receipt found (MEDIUM-HIGH RISK)"
+            action = "flagged_medium_high"
+        elif assessment == "solo_pattern":
+            message = "🔍 SOLO PATTERN: No similar receipts found - needs validation (HIGH RISK)"
+            action = "flagged_high"
+        else:
+            message = f"⚠️ Assessment: {assessment}"
+            action = "flagged"
+        
+        return {
+            "action": action,
+            "message": message,
+            "receipt_id": receipt_uuid,
+            "filename": file.filename,
+            
+            "layer4_analysis": {
+                "extracted_receipt_id": layer4_result["extracted_receipt_id"],
+                "ocr_confidence": layer4_result["ocr_confidence"],
+                "structure_pattern": layer4_result["structure"],
+                
+                "duplicate_check": {
+                    "is_duplicate": layer4_result["is_duplicate"],
+                    "original_receipt_id": layer4_result.get("original_receipt_id")
+                },
+                
+                "pattern_analysis": {
+                    "similar_receipts_found": layer4_result["similar_pattern_count"],
+                    "assessment": assessment,
+                    "cluster_size": layer4_result["similar_pattern_count"] + 1
+                },
+                
+                "anomalies": {
+                    "length_anomaly": layer4_result["length_anomaly"],
+                    "prefix_rarity_score": layer4_result["prefix_rarity_score"],
+                    "digram_rarity_score": layer4_result["digram_rarity_score"]
+                },
+                
+                "risk_score": risk
+            },
+            
+            "ocr_comparison": {
+                "easyocr": {
+                    "success": ocr_comparison["easyocr"]["success"],
+                    "found_receipt_id": extracted_id if ocr_comparison["easyocr"]["success"] else None
+                },
+                "google_vision": {
+                    "success": ocr_comparison["google_cloud_vision"]["success"],
+                    "found_receipt_id": extracted_id if ocr_comparison["google_cloud_vision"]["success"] else None
+                },
+                "consensus_confidence": ocr_conf
+            },
+            
+            "explanation": {
+                "what_happened": AnomalyService._get_explanation(layer4_result),
+                "why_this_risk": AnomalyService._get_risk_explanation(assessment, risk),
+                "next_steps": AnomalyService._get_next_steps(assessment)
+            }
+        }
+        
+    finally:
+        # Clean up temp file
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 
 @app.get("/")
 def root():
