@@ -1,37 +1,54 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+# app/routers/receipts.py
+import shutil
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-import os
-from app.database.session import get_db
-from app.services.validation.hash_service import compute_sha256
-from app.database.models.receipt import Receipt
-from app.config import settings
+
+from ..config import settings
+from ..dependencies import get_db, get_approved_student
+from ..database.models.student import Student
+from ..services.receipt_service import ReceiptService
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
-@router.post("/upload")
-def upload_receipt(student_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    # Save file
-    os.makedirs(settings.RECEIPT_UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(settings.RECEIPT_UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as f:
-        f.write(file.file.read())
 
-    # Compute hash
-    file_hash = compute_sha256(file_path)
+def validate_upload_file(file: UploadFile) -> None:
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in settings.ALLOWED_IMAGE_EXTENSIONS:
+        allowed = ", ".join(sorted(settings.ALLOWED_IMAGE_EXTENSIONS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{suffix}' not allowed. Accepted: {allowed}"
+        )
 
-    # Check duplicates
-    existing = db.query(Receipt).filter(Receipt.sha256_hash == file_hash).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Duplicate receipt detected")
 
-    # Save in DB
-    receipt = Receipt(
-        student_id=student_id,
-        file_path=file_path,
-        sha256_hash=file_hash
-    )
-    db.add(receipt)
-    db.commit()
-    db.refresh(receipt)
+@router.post("/submit")
+async def submit_receipt(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    student: Student = Depends(get_approved_student)  # JWT auth + approval check
+):
+    """
+    Submit a receipt for reimbursement.
+    Requires a valid JWT token and an approved student account.
+    Runs all 5 fraud detection layers and returns the assessment result.
+    """
+    validate_upload_file(file)
 
-    return {"receipt_id": receipt.receipt_id, "sha256_hash": file_hash}
+    temp_path = Path("uploads") / "temp" / file.filename
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        return await ReceiptService.run_full_pipeline(
+            db=db,
+            file_path=temp_path,
+            student_id=student.student_id,  # comes from JWT, not query param
+            filename=file.filename
+        )
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()

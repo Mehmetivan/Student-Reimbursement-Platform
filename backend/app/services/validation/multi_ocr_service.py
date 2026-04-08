@@ -298,3 +298,88 @@ class MultiOCRService:
         }
         
         return comparison
+
+    @staticmethod
+    def extract_stpt_id_from_card(text: str) -> tuple:
+        """
+        Extract STPT customer ID from the physical STPT card image.
+
+        The card shows the ID in the format: 09 01 00555845
+        (two small groups then the actual ID with possible leading zeros)
+
+        On receipts the same ID appears as: SERIE CARD: 555845
+        (leading zeros stripped, last 6+ digits only)
+
+        So we extract the third group, strip leading zeros, and store that —
+        it will then match correctly against what Layer 3 reads from receipts.
+
+        Returns: (stpt_id, confidence)
+        """
+        import re
+        if not text:
+            return None, 0.0
+
+        # Primary pattern: two short digit groups followed by the ID
+        # Matches: "09 01 00555845" or "09\n01\n00555845" etc.
+        pattern = r'\b\d{1,2}\s+\d{1,2}\s+(\d{6,12})\b'
+        match = re.search(pattern, text)
+        if match:
+            raw_id = match.group(1)
+            # Store the full number including leading zeros (e.g. 00555845)
+            # Comparison against receipt is done via substring check, not equality
+            if raw_id:
+                return raw_id, 0.90
+
+        # Fallback: look for STPT keyword nearby and grab adjacent number block
+        stpt_pattern = r'STPT[\s\S]{0,50}?(\d{6,12})'
+        match = re.search(stpt_pattern, text, re.IGNORECASE)
+        if match:
+            raw_id = match.group(1)
+            if raw_id:
+                return raw_id, 0.70
+
+        return None, 0.0
+
+    @staticmethod
+    def extract_card_id(file_path) -> dict:
+        """
+        Run OCR on an STPT card image and extract the customer ID.
+        Uses Google Vision first (most accurate), falls back to EasyOCR.
+
+        Returns dict with extracted_stpt_id, confidence, raw_text, ocr_engine.
+        """
+        from pathlib import Path
+        file_path = Path(file_path)
+
+        # Try Google Vision first
+        google_result = MultiOCRService.extract_text_google_vision(file_path)
+        if google_result["success"] and google_result["raw_text"]:
+            stpt_id, conf = MultiOCRService.extract_stpt_id_from_card(google_result["raw_text"])
+            if stpt_id:
+                return {
+                    "extracted_stpt_id": stpt_id,
+                    "confidence": conf,
+                    "raw_text": google_result["raw_text"],
+                    "ocr_engine": "google_cloud_vision"
+                }
+
+        # Fallback to EasyOCR
+        easyocr_result = MultiOCRService.extract_text_easyocr(file_path)
+        if easyocr_result["success"] and easyocr_result["raw_text"]:
+            stpt_id, conf = MultiOCRService.extract_stpt_id_from_card(easyocr_result["raw_text"])
+            if stpt_id:
+                return {
+                    "extracted_stpt_id": stpt_id,
+                    "confidence": conf,
+                    "raw_text": easyocr_result["raw_text"],
+                    "ocr_engine": "easyocr"
+                }
+
+        # Nothing found
+        return {
+            "extracted_stpt_id": None,
+            "confidence": 0.0,
+            "raw_text": google_result.get("raw_text", ""),
+            "ocr_engine": "none"
+        }
+

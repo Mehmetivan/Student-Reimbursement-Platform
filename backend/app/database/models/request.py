@@ -20,6 +20,7 @@ class Request(Base):
     status = Column(Enum(RequestStatus), nullable=False, default=RequestStatus.PENDING)
     submit_timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
     review_timestamp = Column(DateTime, nullable=True)
+    admin_feedback = Column(Text, nullable=True)  # message from admin on approve/reject
     
     # Relationships
     student = relationship("Student", back_populates="requests")
