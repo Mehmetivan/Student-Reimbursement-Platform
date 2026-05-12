@@ -1,17 +1,18 @@
 # app/routers/students.py
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from ..config import settings
 from ..dependencies import get_db, get_current_student
 from ..database.models.student import Student
 from ..services.student_service import StudentService
 from ..services.request_service import RequestService
+from ..schemas.student import StudentProfileResponse, ProfileUpdateRequest, DocumentUploadResponse
+from ..schemas.request import ReimbursementRequestResponse
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -20,10 +21,7 @@ def validate_upload_file(file: UploadFile) -> None:
     suffix = Path(file.filename).suffix.lower()
     if suffix not in settings.ALLOWED_IMAGE_EXTENSIONS:
         allowed = ", ".join(sorted(settings.ALLOWED_IMAGE_EXTENSIONS))
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type '{suffix}' not allowed. Accepted: {allowed}"
-        )
+        raise HTTPException(status_code=400, detail=f"File type '{suffix}' not allowed. Accepted: {allowed}")
 
 
 def save_temp(file: UploadFile) -> Path:
@@ -34,56 +32,23 @@ def save_temp(file: UploadFile) -> Path:
     return temp_path
 
 
-# ── Request schemas ───────────────────────────────────────────────────────────
-
-class ProfileUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    iban: Optional[str] = None
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-
-@router.get("/me")
-def get_my_profile(
-    student: Student = Depends(get_current_student),
-    db: Session = Depends(get_db)
-):
+@router.get("/me", response_model=StudentProfileResponse)
+def get_my_profile(student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
     """Get the current student's profile and document upload status."""
     return StudentService.get_profile(db, student)
 
 
-@router.patch("/me")
-def update_my_profile(
-    payload: ProfileUpdateRequest,
-    student: Student = Depends(get_current_student),
-    db: Session = Depends(get_db)
-):
-    """
-    Update profile fields: name and IBAN.
-    If all 3 documents are uploaded and profile is complete,
-    status automatically advances to pending_approval.
-    """
+@router.patch("/me", response_model=StudentProfileResponse)
+def update_my_profile(payload: ProfileUpdateRequest, student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
+    """Update profile fields: name and IBAN."""
     if not payload.name and not payload.iban:
         raise HTTPException(status_code=400, detail="Provide at least name or iban to update")
-
-    return StudentService.update_profile(
-        db=db,
-        student=student,
-        name=payload.name,
-        iban=payload.iban
-    )
+    return StudentService.update_profile(db=db, student=student, name=payload.name, iban=payload.iban)
 
 
-@router.post("/me/documents/student-id")
-async def upload_student_id(
-    file: UploadFile = File(...),
-    student: Student = Depends(get_current_student),
-    db: Session = Depends(get_db)
-):
-    """
-    Upload student ID photo.
-    Stored for staff to review manually — no OCR performed.
-    """
+@router.post("/me/documents/student-id", response_model=DocumentUploadResponse)
+async def upload_student_id(file: UploadFile = File(...), student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
+    """Upload student ID photo."""
     validate_upload_file(file)
     temp_path = save_temp(file)
     try:
@@ -93,17 +58,9 @@ async def upload_student_id(
             temp_path.unlink()
 
 
-@router.post("/me/documents/stpt-card")
-async def upload_stpt_card(
-    file: UploadFile = File(...),
-    student: Student = Depends(get_current_student),
-    db: Session = Depends(get_db)
-):
-    """
-    Upload STPT transport card photo.
-    OCR runs immediately to extract and store the STPT customer ID.
-    This ID is used in Layer 3 to validate receipts.
-    """
+@router.post("/me/documents/stpt-card", response_model=DocumentUploadResponse)
+async def upload_stpt_card(file: UploadFile = File(...), student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
+    """Upload STPT card photo. OCR runs immediately to extract the STPT customer ID."""
     validate_upload_file(file)
     temp_path = save_temp(file)
     try:
@@ -113,17 +70,9 @@ async def upload_stpt_card(
             temp_path.unlink()
 
 
-@router.post("/me/documents/bank-proof")
-async def upload_bank_proof(
-    file: UploadFile = File(...),
-    student: Student = Depends(get_current_student),
-    db: Session = Depends(get_db)
-):
-    """
-    Upload bank statement as proof of IBAN.
-    Stored for staff to verify — no OCR performed.
-    Enter your IBAN manually via PATCH /students/me.
-    """
+@router.post("/me/documents/bank-proof", response_model=DocumentUploadResponse)
+async def upload_bank_proof(file: UploadFile = File(...), student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
+    """Upload bank statement as proof of IBAN."""
     validate_upload_file(file)
     temp_path = save_temp(file)
     try:
@@ -133,18 +82,7 @@ async def upload_bank_proof(
             temp_path.unlink()
 
 
-@router.get("/me/requests")
-def get_my_requests(
-    status: Optional[str] = None,
-    student: Student = Depends(get_current_student),
-    db: Session = Depends(get_db)
-):
-    """
-    Get all reimbursement requests submitted by the current student.
-    Optionally filter by status: pending, approved, rejected, under_review
-    """
-    return RequestService.get_student_requests(
-        db=db,
-        student_id=student.student_id,
-        status=status
-    )
+@router.get("/me/requests", response_model=list[ReimbursementRequestResponse])
+def get_my_requests(status: Optional[str] = None, student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
+    """Get all reimbursement requests for the current student."""
+    return RequestService.get_student_requests(db=db, student_id=student.student_id, status=status)
