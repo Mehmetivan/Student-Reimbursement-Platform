@@ -132,7 +132,14 @@ class ReceiptService:
         consensus = ocr_result["consensus"]
         layer3_data = {
             "stpt_id": consensus["stpt_id"],
-            "stpt_id_confidence": 0.9 if consensus["majority_agree"] else 0.5,
+            "stpt_id_confidence": (
+                0.95 if consensus["all_agree"] else
+                0.85 if consensus["majority_agree"] else
+                max(
+                    ocr_result.get("easyocr", {}).get("stpt_id_confidence", 0),
+                    ocr_result.get("google_cloud_vision", {}).get("stpt_id_confidence", 0)
+                )
+            ),
             "receipt_id": None,
             "receipt_id_confidence": 0.0,
             "average_confidence": 0.9 if consensus["all_agree"] else 0.7,

@@ -48,7 +48,7 @@ class DocumentUploadResponse(BaseModel):
 
 
 class StudentDocumentResponse(BaseModel):
-    document_id: int
+    document_id: str
     document_type: DocumentType
     file_path: str
     uploaded_at: str

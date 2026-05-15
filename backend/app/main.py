@@ -75,3 +75,6 @@ def health_check():
 #   source venv/bin/activate       (Mac/Linux)
 #   python -m uvicorn app.main:app --reload
 #   Swagger UI: http://127.0.0.1:8000/docs
+
+#   cd frontend && npm run dev
+#   http://localhost:3000

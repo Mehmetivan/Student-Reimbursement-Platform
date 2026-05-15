@@ -166,11 +166,11 @@ async def test_ocr_layer(file: UploadFile = File(...)):
             temp_path.unlink()
 
 
-# ── Layer 3 (all engines compared) ───────────────────────────────────────────
+# ── Layer 3 (all engines compared — STPT ID only) ────────────────────────────
 
 @router.post("/compare-ocr")
 async def test_compare_ocr(file: UploadFile = File(...)):
-    """Compare Tesseract, EasyOCR, and Google Cloud Vision side by side."""
+    """Compare Tesseract, EasyOCR, and Google Cloud Vision for STPT customer ID extraction."""
     validate_upload_file(file)
     temp_path = _save_temp(file)
 
@@ -193,6 +193,187 @@ async def test_compare_ocr(file: UploadFile = File(...)):
             comparison["message"] = "No STPT ID found by any engine."
 
         return comparison
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+# ── Layer 3 + 4 (both IDs extracted and compared) ────────────────────────────
+
+@router.post("/ocr-extraction")
+async def test_ocr_extraction(file: UploadFile = File(...)):
+    """
+    Extract and compare both IDs from the receipt using all available OCR engines.
+
+    - STPT Customer ID (SERIE CARD: 555845) — used in Layer 3 to verify the card belongs to the student
+    - Receipt Transaction ID (324-19204-555845) — used in Layer 4 to verify the transaction is genuine
+
+    Shows per-engine results and consensus for both IDs side by side.
+    """
+    validate_upload_file(file)
+    temp_path = _save_temp(file)
+
+    try:
+        # Run all 3 engines
+        tesseract_result = MultiOCRService.extract_text_tesseract(temp_path)
+        easyocr_result = MultiOCRService.extract_text_easyocr(temp_path)
+        google_result = MultiOCRService.extract_text_google_vision(temp_path)
+
+        # Extract STPT customer ID from each engine (Layer 3)
+        tesseract_stpt, tesseract_stpt_conf = MultiOCRService.extract_stpt_id(tesseract_result["raw_text"])
+        easyocr_stpt, easyocr_stpt_conf = MultiOCRService.extract_stpt_id(easyocr_result["raw_text"])
+        google_stpt, google_stpt_conf = MultiOCRService.extract_stpt_id(google_result["raw_text"])
+
+        # Extract receipt transaction ID from EasyOCR and Google Vision (Layer 4)
+        # Tesseract is not used for receipt ID extraction — only EasyOCR and Google Vision
+        easyocr_receipt_id, easyocr_receipt_conf = AnomalyService.extract_receipt_id_from_ocr(
+            easyocr_result["raw_text"], ""
+        )
+        google_receipt_id, google_receipt_conf = AnomalyService.extract_receipt_id_from_ocr(
+            "", google_result["raw_text"]
+        )
+        # Consensus for receipt ID (EasyOCR + Google Vision only)
+        receipt_id_consensus, receipt_id_conf = AnomalyService.extract_receipt_id_from_ocr(
+            easyocr_result["raw_text"],
+            google_result["raw_text"]
+        )
+
+        # STPT ID consensus (all 3 engines — same logic as compare-ocr)
+        all_agree = False
+        majority_agree = False
+        stpt_consensus = None
+        agreement_count = 0
+
+        if tesseract_stpt and tesseract_stpt == easyocr_stpt == google_stpt:
+            stpt_consensus = tesseract_stpt
+            all_agree = True
+            majority_agree = True
+            agreement_count = 3
+        elif tesseract_stpt and tesseract_stpt == easyocr_stpt:
+            stpt_consensus = tesseract_stpt
+            majority_agree = True
+            agreement_count = 2
+        elif tesseract_stpt and tesseract_stpt == google_stpt:
+            stpt_consensus = tesseract_stpt
+            majority_agree = True
+            agreement_count = 2
+        elif easyocr_stpt and easyocr_stpt == google_stpt:
+            stpt_consensus = easyocr_stpt
+            majority_agree = True
+            agreement_count = 2
+        else:
+            best = max(
+                [("Tesseract", tesseract_stpt, tesseract_stpt_conf),
+                 ("EasyOCR", easyocr_stpt, easyocr_stpt_conf),
+                 ("Google Vision", google_stpt, google_stpt_conf)],
+                key=lambda x: x[2]
+            )
+            stpt_consensus = best[1]
+            agreement_count = 1
+
+        return {
+            "file_info": {
+                "filename": file.filename,
+                "file_size": temp_path.stat().st_size
+            },
+
+            # Per-engine results
+            "tesseract": {
+                "ocr_engine": "Tesseract",
+                "success": tesseract_result["success"],
+                "raw_text": tesseract_result["raw_text"],
+                "processing_time_seconds": tesseract_result["processing_time_seconds"],
+                "error": tesseract_result["error"],
+                # STPT customer ID
+                "stpt_customer_id_found": tesseract_stpt,
+                "stpt_customer_id_confidence": tesseract_stpt_conf,
+                # Receipt transaction ID — Tesseract not used for this
+                "receipt_transaction_id_found": None,
+                "receipt_transaction_id_confidence": 0.0,
+                "note": "Tesseract not used for receipt transaction ID extraction"
+            },
+
+            "easyocr": {
+                "ocr_engine": "EasyOCR",
+                "success": easyocr_result["success"],
+                "raw_text": easyocr_result["raw_text"],
+                "processing_time_seconds": easyocr_result["processing_time_seconds"],
+                "average_confidence": easyocr_result.get("average_confidence"),
+                "detected_segments": easyocr_result.get("detected_segments"),
+                "error": easyocr_result["error"],
+                # STPT customer ID
+                "stpt_customer_id_found": easyocr_stpt,
+                "stpt_customer_id_confidence": easyocr_stpt_conf,
+                # Receipt transaction ID
+                "receipt_transaction_id_found": easyocr_receipt_id,
+                "receipt_transaction_id_confidence": easyocr_receipt_conf
+            },
+
+            "google_cloud_vision": {
+                "ocr_engine": "Google Cloud Vision",
+                "success": google_result["success"],
+                "raw_text": google_result["raw_text"],
+                "processing_time_seconds": google_result["processing_time_seconds"],
+                "detected_segments": google_result.get("detected_segments"),
+                "error": google_result["error"],
+                # STPT customer ID
+                "stpt_customer_id_found": google_stpt,
+                "stpt_customer_id_confidence": google_stpt_conf,
+                # Receipt transaction ID
+                "receipt_transaction_id_found": google_receipt_id,
+                "receipt_transaction_id_confidence": google_receipt_conf
+            },
+
+            # Consensus results
+            "consensus": {
+                # STPT customer ID consensus (all 3 engines)
+                "stpt_customer_id": stpt_consensus,
+                "stpt_agreement_count": agreement_count,
+                "stpt_total_engines": 3,
+                "stpt_all_agree": all_agree,
+                "stpt_majority_agree": majority_agree,
+
+                # Receipt transaction ID consensus (EasyOCR + Google Vision only)
+                "receipt_transaction_id": receipt_id_consensus,
+                "receipt_id_confidence": receipt_id_conf,
+                "receipt_id_engines_used": 2,
+                "receipt_id_engines_agree": easyocr_receipt_id == google_receipt_id and easyocr_receipt_id is not None
+            },
+
+            # Performance
+            "performance_comparison": {
+                "fastest_engine": min(
+                    [tesseract_result, easyocr_result, google_result],
+                    key=lambda x: x["processing_time_seconds"] if x["success"] else float('inf')
+                )["ocr_engine"],
+                "total_processing_time": round(
+                    tesseract_result["processing_time_seconds"] +
+                    easyocr_result["processing_time_seconds"] +
+                    google_result["processing_time_seconds"], 2
+                ),
+                "success_rate": sum([
+                    tesseract_result["success"],
+                    easyocr_result["success"],
+                    google_result["success"]
+                ]) / 3
+            },
+
+            # Summary for thesis
+            "thesis_analysis": {
+                "engines_found_stpt_id": sum([
+                    tesseract_stpt is not None,
+                    easyocr_stpt is not None,
+                    google_stpt is not None
+                ]),
+                "engines_found_receipt_id": sum([
+                    easyocr_receipt_id is not None,
+                    google_receipt_id is not None
+                ]),
+                "both_ids_extracted": stpt_consensus is not None and receipt_id_consensus is not None,
+                "extraction_complete": stpt_consensus is not None and receipt_id_consensus is not None
+            }
+        }
+
     finally:
         if temp_path.exists():
             temp_path.unlink()
@@ -320,3 +501,4 @@ async def test_combined_layers(
     finally:
         if temp_path.exists():
             temp_path.unlink()
+# This file already exists from earlier build

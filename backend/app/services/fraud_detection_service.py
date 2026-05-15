@@ -9,6 +9,16 @@ from typing import Dict
 import json
 
 
+# Weights for the weighted sum risk aggregation (Layer 5)
+# Must sum to 1.0
+LAYER_WEIGHTS = {
+    "layer1": 0.35,  # Hash — exact duplicate is a strong fraud signal
+    "layer2": 0.20,  # EXIF — metadata anomalies are indicative but not definitive
+    "layer3": 0.35,  # OCR — STPT ID mismatch is a strong fraud signal
+    "layer4": 0.10,  # Anomaly — pattern analysis is supportive but less definitive
+}
+
+
 class FraudDetectionService:
     """Service to save fraud detection results to database"""
 
@@ -52,10 +62,9 @@ class FraudDetectionService:
 
         stpt_matches = False
         if extracted_stpt_id and expected_stpt_id:
-            # extracted_stpt_id comes from the receipt e.g. "555845"
-            # expected_stpt_id is stored from the card e.g. "00555845"
-            # We check if the receipt ID is contained within the card ID
-            # to handle leading zeros that vary between card and receipt format
+            # extracted_stpt_id from receipt e.g. "555845"
+            # expected_stpt_id stored from card e.g. "00555845"
+            # Substring check handles leading zeros that vary between card and receipt
             stpt_matches = (
                 extracted_stpt_id == expected_stpt_id or
                 extracted_stpt_id in expected_stpt_id
@@ -93,7 +102,7 @@ class FraudDetectionService:
         ocr_data.receipt_id_confidence = ocr_result.get("receipt_id_confidence", 0.0)
         ocr_data.raw_ocr_text = ocr_result.get("raw_text", "")[:1000]
         ocr_data.layer3_risk_score = min(layer3_risk, 1.0)
-        ocr_data.ocr_flags = json.dumps(ocr_flags)  # Fixed: stored as JSON list, not str(list)
+        ocr_data.ocr_flags = json.dumps(ocr_flags)
 
         db.commit()
         db.refresh(ocr_data)
@@ -105,7 +114,7 @@ class FraudDetectionService:
         receipt_id: str,
         layer4_analysis: Dict
     ) -> ReceiptAnomalies:
-        # Save anomaly record
+        """Save Layer 4 anomaly detection results to receipt_anomalies table."""
         anomaly_data = db.query(ReceiptAnomalies).filter(
             ReceiptAnomalies.receipt_id == receipt_id
         ).first()
@@ -119,8 +128,8 @@ class FraudDetectionService:
         anomaly_data.digram_rarity_score = layer4_analysis.get("digram_rarity_score", 0.0)
         anomaly_data.layer4_risk_score = layer4_analysis.get("layer4_risk_score", 0.0)
 
-        # Also write the extracted receipt ID back to receipt_ocr
-        # (Layer 3 leaves it as None, Layer 4 is where it actually gets extracted)
+        # Write extracted receipt ID back to receipt_ocr
+        # Layer 3 leaves it as None — Layer 4 is where it actually gets extracted
         extracted_receipt_id = layer4_analysis.get("extracted_receipt_id")
         if extracted_receipt_id:
             ocr_record = db.query(ReceiptOCR).filter(
@@ -143,8 +152,9 @@ class FraudDetectionService:
     ) -> ReceiptRiskAssessment:
         """
         Calculate and save final risk assessment (Layer 5).
-        Combines all layer scores into a final score.
-        layer4_risk is now a proper parameter, no longer hardcoded to 0.0.
+        Uses a weighted sum: R = w1*H + w2*E + w3*O + w4*A
+        Weights are defined in LAYER_WEIGHTS and reflect the relative
+        importance of each layer's signal.
         """
         exif_data = db.query(ReceiptMetadata).filter(
             ReceiptMetadata.receipt_id == receipt_id
@@ -154,6 +164,7 @@ class FraudDetectionService:
             ReceiptOCR.receipt_id == receipt_id
         ).first()
 
+        # Layer 1 risk
         layer1_risk = 0.0
         if layer1_fraud:
             layer1_risk = 0.9
@@ -164,7 +175,28 @@ class FraudDetectionService:
         layer3_risk = ocr_data.layer3_risk_score if ocr_data else 0.0
         layer4_risk = min(layer4_risk, 1.0)
 
-        total_risk = max(layer1_risk, layer2_risk, layer3_risk, layer4_risk)
+        # Weighted sum: R = w1*H + w2*E + w3*O + w4*A
+        total_risk = (
+            LAYER_WEIGHTS["layer1"] * layer1_risk +
+            LAYER_WEIGHTS["layer2"] * layer2_risk +
+            LAYER_WEIGHTS["layer3"] * layer3_risk +
+            LAYER_WEIGHTS["layer4"] * layer4_risk
+        )
+        total_risk = min(round(total_risk, 4), 1.0)
+
+                # Critical signal overrides — certain fraud signals force high risk
+                # regardless of what the weighted sum produces.
+                # These cases always go to manual admin review.
+        if layer1_fraud:
+            total_risk = max(total_risk, 0.9)   # exact file submitted by another student
+        if layer2_risk >= 0.7:
+            total_risk = max(total_risk, 0.75)  # no EXIF or editing software detected
+        if layer3_risk >= 0.4:
+            total_risk = max(total_risk, 0.75)  # any STPT ID failure — not found or mismatch
+        if layer4_risk >= 0.8:
+            total_risk = max(total_risk, 0.75)  # solo pattern or exact duplicate receipt ID
+
+        total_risk = min(round(total_risk, 4), 1.0)
 
         if total_risk >= 0.7:
             assessment = "high_risk"
@@ -177,23 +209,27 @@ class FraudDetectionService:
             "layer1_hash": {
                 "fraud_detected": layer1_fraud,
                 "duplicate_detected": layer1_duplicate,
-                "risk": layer1_risk
+                "risk": layer1_risk,
+                "weight": LAYER_WEIGHTS["layer1"]
             },
             "layer2_exif": {
                 "has_editing_software": exif_data.has_editing_software if exif_data else False,
                 "editing_software": exif_data.editing_software_name if exif_data else None,
                 "flags": exif_data.exif_flags if exif_data else [],
-                "risk": layer2_risk
+                "risk": layer2_risk,
+                "weight": LAYER_WEIGHTS["layer2"]
             },
             "layer3_ocr": {
                 "stpt_id_matches": ocr_data.stpt_id_matches_student if ocr_data else None,
                 "extracted_stpt_id": ocr_data.extracted_stpt_id if ocr_data else None,
                 "expected_stpt_id": ocr_data.expected_stpt_id if ocr_data else None,
-                "flags": ocr_data.ocr_flags if ocr_data else [],
-                "risk": layer3_risk
+                "flags": json.loads(ocr_data.ocr_flags) if ocr_data and isinstance(ocr_data.ocr_flags, str) else (ocr_data.ocr_flags if ocr_data else []),
+                "risk": layer3_risk,
+                "weight": LAYER_WEIGHTS["layer3"]
             },
             "layer4_anomaly": {
-                "risk": layer4_risk
+                "risk": layer4_risk,
+                "weight": LAYER_WEIGHTS["layer4"]
             },
             "total_risk": total_risk,
             "assessment": assessment
