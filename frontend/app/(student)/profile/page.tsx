@@ -6,14 +6,26 @@ import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { FileUpload } from '@/components/ui/FileUpload'
+import { Modal } from '@/components/ui/Modal'
 import { Topbar } from '@/components/layout/Topbar'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { AccountStatusBadge } from '@/components/ui/Badge'
+import { FileText, ExternalLink } from 'lucide-react'
 import type { StudentProfile } from '@/types'
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+type StudentDocument = {
+  document_id: string
+  document_type: string
+  file_path: string
+  uploaded_at: string
+}
 
 export default function ProfilePage() {
   const { t } = useI18n()
   const [profile, setProfile] = useState<StudentProfile | null>(null)
+  const [documents, setDocuments] = useState<StudentDocument[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
@@ -21,6 +33,16 @@ export default function ProfilePage() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null)
   const [uploadResults, setUploadResults] = useState<Record<string, string>>({})
+  const [viewingDoc, setViewingDoc] = useState<{ url: string; label: string } | null>(null)
+
+  const loadDocuments = async () => {
+    try {
+      const docs = await studentApi.getMyDocuments()
+      setDocuments(docs)
+    } catch {
+      // no documents yet
+    }
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -29,6 +51,7 @@ export default function ProfilePage() {
         setProfile(p)
         setName(p.name ?? '')
         setIban(p.iban ?? '')
+        await loadDocuments()
       } finally {
         setLoading(false)
       }
@@ -41,7 +64,7 @@ export default function ProfilePage() {
     setSaving(true)
     try {
       const updated = await studentApi.updateProfile({ name, iban })
-      setProfile(updated)
+      if (updated) setProfile(updated)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } finally {
@@ -60,9 +83,9 @@ export default function ProfilePage() {
       else if (type === 'stpt-card') result = await studentApi.uploadStptCard(file) as Record<string, unknown>
       else result = await studentApi.uploadBankProof(file) as Record<string, unknown>
 
-      // Refresh profile to get updated document status and stpt_id
       const updated = await studentApi.getProfile()
       setProfile(updated)
+      await loadDocuments()
 
       if (type === 'stpt-card' && result.extracted_stpt_id) {
         setUploadResults((prev) => ({
@@ -82,6 +105,12 @@ export default function ProfilePage() {
     pending_approval: t('statusPendingApproval'),
     approved: t('statusApproved'),
     rejected: t('statusRejected'),
+  }
+
+  const docTypeLabels: Record<string, string> = {
+    STUDENT_ID: t('uploadStudentId'),
+    STPT_CARD: t('uploadStptCard'),
+    BANK_PROOF: t('uploadBankProof'),
   }
 
   return (
@@ -141,19 +170,14 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <Button
-                type="submit"
-                variant="primary"
-                loading={saving}
-                className="self-start"
-              >
+              <Button type="submit" variant="primary" loading={saving} className="self-start">
                 {saving ? t('saving') : t('saveChanges')}
               </Button>
             </form>
           </CardBody>
         </Card>
 
-        {/* Documents */}
+        {/* Documents upload */}
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-gray-900">{t('documentsSection')}</h2>
@@ -193,7 +217,62 @@ export default function ProfilePage() {
           </CardBody>
         </Card>
 
+        {/* View uploaded documents */}
+        {documents.length > 0 && (
+          <Card>
+            <CardHeader>
+              <h2 className="font-semibold text-gray-900">View Uploaded Documents</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Click to view your submitted documents</p>
+            </CardHeader>
+            <CardBody className="flex flex-col gap-2">
+              {documents.map((doc) => (
+                <button
+                  key={doc.document_id}
+                  onClick={() => setViewingDoc({ url: `${BASE_URL}/${doc.file_path}`, label: docTypeLabels[doc.document_type] ?? doc.document_type })}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-violet-50 hover:border hover:border-violet-200 transition-all w-full text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-violet-600" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {docTypeLabels[doc.document_type] ?? doc.document_type.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-xs text-gray-400">{doc.uploaded_at}</p>
+                    </div>
+                  </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-gray-400" />
+                </button>
+              ))}
+            </CardBody>
+          </Card>
+        )}
+
       </div>
+
+      {/* Document viewer modal */}
+      <Modal
+        open={!!viewingDoc}
+        onClose={() => setViewingDoc(null)}
+        title={viewingDoc?.label ?? 'Document'}
+      >
+        {viewingDoc && (
+          <div className="flex flex-col gap-3">
+            <img
+              src={viewingDoc.url}
+              alt={viewingDoc.label}
+              className="w-full rounded-xl object-contain max-h-[70vh]"
+            />
+            <a
+              href={viewingDoc.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-violet-600 hover:underline flex items-center gap-1 self-center"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+            </a>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

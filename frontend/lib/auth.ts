@@ -2,23 +2,24 @@
 // lib/auth.ts
 // Token and user storage helpers.
 // Stores token in both localStorage (for API calls) and cookies (for middleware).
+// Cookie max-age matches token expiry (8 hours) so both expire together.
 
 import type { MeResponse } from '@/types'
 
-function setCookie(name: string, value: string, days = 7) {
-  const expires = new Date()
-  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
-  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`
+const TOKEN_EXPIRY_SECONDS = 8 * 60 * 60 // 8 hours — must match ACCESS_TOKEN_EXPIRE_MINUTES in backend
+
+function setCookie(name: string, value: string, maxAgeSeconds: number) {
+  document.cookie = `${name}=${value};max-age=${maxAgeSeconds};path=/`
 }
 
 function deleteCookie(name: string) {
-  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`
+  document.cookie = `${name}=;max-age=0;path=/`
 }
 
 export const auth = {
   saveToken: (token: string) => {
     localStorage.setItem('token', token)
-    setCookie('token', token)
+    setCookie('token', token, TOKEN_EXPIRY_SECONDS)
   },
 
   getToken: (): string | null => {
@@ -28,7 +29,7 @@ export const auth = {
 
   saveUser: (user: MeResponse) => {
     localStorage.setItem('user', JSON.stringify(user))
-    setCookie('role', user.role)
+    setCookie('role', user.role, TOKEN_EXPIRY_SECONDS)
   },
 
   getUser: (): MeResponse | null => {

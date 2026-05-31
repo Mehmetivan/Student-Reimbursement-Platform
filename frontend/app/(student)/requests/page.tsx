@@ -12,10 +12,9 @@ import { RequestStatusBadge } from '@/components/ui/Badge'
 import { PlusCircle, FileText, ChevronRight } from 'lucide-react'
 import type { ReimbursementRequest, RequestStatus } from '@/types'
 
-const STATUS_FILTERS: { value: string; labelKey: 'allStatuses' | 'statusPending' | 'statusApproved' | 'statusRejected' | 'statusUnderReview' }[] = [
+const STATUS_FILTERS: { value: string; labelKey: 'allStatuses' | 'statusPending' | 'statusApproved' | 'statusRejected' }[] = [
   { value: '', labelKey: 'allStatuses' },
   { value: 'pending', labelKey: 'statusPending' },
-  { value: 'under_review', labelKey: 'statusUnderReview' },
   { value: 'approved', labelKey: 'statusApproved' },
   { value: 'rejected', labelKey: 'statusRejected' },
 ]
@@ -43,7 +42,6 @@ export default function StudentRequestsPage() {
     pending: t('statusPending'),
     approved: t('statusApproved'),
     rejected: t('statusRejected'),
-    under_review: t('statusUnderReview'),
   }
 
   return (

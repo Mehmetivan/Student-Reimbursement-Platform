@@ -12,7 +12,7 @@ import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ReimbursementRequest, RequestStatus } from '@/types'
 
-const STATUS_FILTERS = ['', 'pending', 'under_review', 'approved', 'rejected']
+const STATUS_FILTERS = ['', 'pending', 'approved', 'rejected']
 const TIMEFRAME_OPTIONS = [
   { value: '', label: 'allTime' },
   { value: 'today', label: 'today' },
@@ -47,13 +47,11 @@ export default function AdminRequestsPage() {
     pending: t('statusPending'),
     approved: t('statusApproved'),
     rejected: t('statusRejected'),
-    under_review: t('statusUnderReview'),
   }
 
   const statusFilterLabels: Record<string, string> = {
     '': t('allStatuses'),
     pending: t('statusPending'),
-    under_review: t('statusUnderReview'),
     approved: t('statusApproved'),
     rejected: t('statusRejected'),
   }

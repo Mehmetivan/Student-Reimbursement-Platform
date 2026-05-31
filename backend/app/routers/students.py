@@ -81,6 +81,23 @@ async def upload_bank_proof(file: UploadFile = File(...), student: Student = Dep
         if temp_path.exists():
             temp_path.unlink()
 
+@router.get("/me/documents")
+def get_my_documents(student: Student = Depends(get_current_student), db: Session = Depends(get_db)):
+    """Get all uploaded documents with file paths for the current student."""
+    from ..database.models.student_document import StudentDocument
+    docs = db.query(StudentDocument).filter(
+        StudentDocument.student_id == student.student_id
+    ).all()
+    return [
+        {
+            "document_id": d.document_id,
+            "document_type": d.document_type,
+            "file_path": d.file_path,
+            "uploaded_at": str(d.uploaded_at)
+        }
+        for d in docs
+    ]
+
 
 @router.get("/me/requests", response_model=list[ReimbursementRequestResponse])
 def get_my_requests(status: Optional[str] = None, student: Student = Depends(get_current_student), db: Session = Depends(get_db)):

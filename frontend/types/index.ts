@@ -72,7 +72,6 @@ export type RequestStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
-  | 'under_review'
 
 export interface RiskAssessment {
   total_risk_score: number
@@ -86,22 +85,26 @@ export interface RiskAssessment {
       fraud_detected: boolean
       duplicate_detected: boolean
       risk: number
+      weight: number
     }
     layer2_exif: {
       has_editing_software: boolean
       editing_software: string | null
       flags: string[]
       risk: number
+      weight: number
     }
     layer3_ocr: {
-      stpt_id_matches: boolean | null
+      stpt_id_matches: boolean
       extracted_stpt_id: string | null
       expected_stpt_id: string | null
       flags: string[]
       risk: number
+      weight: number
     }
     layer4_anomaly: {
       risk: number
+      weight: number
     }
   }
 }

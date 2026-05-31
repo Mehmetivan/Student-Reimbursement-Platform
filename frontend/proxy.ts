@@ -7,8 +7,13 @@ export function proxy(request: NextRequest) {
 
   const publicRoutes = ['/', '/login', '/register']
   if (publicRoutes.includes(pathname)) {
-    if (token && (pathname === '/login' || pathname === '/register')) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+  // Only auto-redirect on login, not register
+    // Register should always be accessible so new users can sign up
+    if (token && pathname === '/login') {
+      const role = request.cookies.get('role')?.value
+      return NextResponse.redirect(
+        new URL(role === 'admin' ? '/admin/dashboard' : '/dashboard', request.url)
+      )
     }
     return NextResponse.next()
   }

@@ -10,8 +10,10 @@ import { Modal } from '@/components/ui/Modal'
 import { Topbar } from '@/components/layout/Topbar'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { AccountStatusBadge } from '@/components/ui/Badge'
-import { ArrowLeft, CheckCircle, XCircle, FileText, Edit } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, FileText, Edit, ExternalLink } from 'lucide-react'
 import type { StudentDetail, AccountStatus } from '@/types'
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function AdminStudentDetailPage() {
   const { t } = useI18n()
@@ -26,6 +28,7 @@ export default function AdminStudentDetailPage() {
   const [editName, setEditName] = useState('')
   const [editIban, setEditIban] = useState('')
   const [editStpt, setEditStpt] = useState('')
+  const [viewingDoc, setViewingDoc] = useState<{ url: string; label: string } | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -131,19 +134,11 @@ export default function AdminStudentDetailPage() {
         {/* Decision buttons */}
         {student.account_status === 'pending_approval' && (
           <div className="flex gap-3">
-            <Button
-              variant="primary"
-              onClick={() => setDecisionModal('approve')}
-              className="flex-1"
-            >
+            <Button variant="primary" onClick={() => setDecisionModal('approve')} className="flex-1">
               <CheckCircle className="h-4 w-4" />
               {t('approveAccount')}
             </Button>
-            <Button
-              variant="danger"
-              onClick={() => setDecisionModal('reject')}
-              className="flex-1"
-            >
+            <Button variant="danger" onClick={() => setDecisionModal('reject')} className="flex-1">
               <XCircle className="h-4 w-4" />
               {t('rejectAccount')}
             </Button>
@@ -154,21 +149,27 @@ export default function AdminStudentDetailPage() {
         <Card>
           <CardHeader>
             <h2 className="font-semibold text-gray-900">{t('documentsSection')}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Click any document to view it</p>
           </CardHeader>
           <CardBody className="flex flex-col gap-3">
             {student.documents.length === 0 ? (
               <p className="text-sm text-gray-400">No documents uploaded yet</p>
             ) : (
               student.documents.map((doc) => (
-                <div key={doc.document_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <button
+                  key={doc.document_id}
+                  onClick={() => setViewingDoc({ url: `${BASE_URL}/${doc.file_path}`, label: docLabels[doc.document_type] ?? doc.document_type })}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-violet-50 hover:border hover:border-violet-200 transition-all w-full text-left"
+                >
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-gray-400" />
+                    <FileText className="h-4 w-4 text-violet-600" />
                     <div>
                       <p className="text-sm font-medium text-gray-900">{docLabels[doc.document_type] ?? doc.document_type}</p>
                       <p className="text-xs text-gray-400">{doc.uploaded_at}</p>
                     </div>
                   </div>
-                </div>
+                  <ExternalLink className="h-3.5 w-3.5 text-gray-400" />
+                </button>
               ))
             )}
           </CardBody>
@@ -220,6 +221,31 @@ export default function AdminStudentDetailPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Document viewer modal */}
+      <Modal
+        open={!!viewingDoc}
+        onClose={() => setViewingDoc(null)}
+        title={viewingDoc?.label ?? 'Document'}
+      >
+        {viewingDoc && (
+          <div className="flex flex-col gap-3">
+            <img
+              src={viewingDoc.url}
+              alt={viewingDoc.label}
+              className="w-full rounded-xl object-contain max-h-[70vh]"
+            />
+            <a
+              href={viewingDoc.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-violet-600 hover:underline flex items-center gap-1 self-center"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+            </a>
+          </div>
+        )}
       </Modal>
     </div>
   )

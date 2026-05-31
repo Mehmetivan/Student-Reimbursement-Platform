@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     # JWT & Security
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480 # 8 hours / full working day
 
    # Google Cloud Vision API
     GOOGLE_CLOUD_VISION_API_KEY: str = ""

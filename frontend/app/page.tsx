@@ -112,7 +112,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-bold text-white mb-4">Ready to get started?</h2>
           <p className="text-violet-200 mb-8">Create your account and submit your first request today.</p>
           <Link href="/register">
-            <Button className="bg-white text-violet-700 hover:bg-violet-50" size="lg">
+            <Button variant="secondary" className="!bg-white hover:!bg-violet-50 border-white" size="lg" style={{ color: '#6d28d9' }}>
               {t('createAccount')}
               <ArrowRight className="h-4 w-4" />
             </Button>

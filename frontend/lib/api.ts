@@ -114,6 +114,12 @@ export const studentApi = {
     const { data } = await api.post('/receipts/submit', formData)
     return data
   },
+
+  getMyDocuments: async (): Promise<{ document_id: string; document_type: string; file_path: string; uploaded_at: string }[]> => {
+    const { data } = await api.get('/students/me/documents')
+    return data
+},
+
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

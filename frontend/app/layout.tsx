@@ -17,7 +17,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-gray-50 text-gray-900`}>
+      <body className={`${inter.className} bg-gray-50 text-gray-900`} suppressHydrationWarning>
         <I18nProvider>
           {children}
         </I18nProvider>

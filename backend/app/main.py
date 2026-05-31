@@ -23,6 +23,9 @@ from .database.models.user import User
 # Routers
 from .routers import auth, students, admin, receipts, test_routes
 
+from fastapi.staticfiles import StaticFiles
+import os
+
 app = FastAPI(
     title="Student Reimbursement Platform",
     description="Multi-layer fraud detection system for public transport reimbursements",
@@ -38,6 +41,12 @@ app.add_middleware(
 )
 
 Base.metadata.create_all(bind=engine)
+
+
+# Serve uploaded files statically
+os.makedirs(settings.RECEIPTS_DIR, exist_ok=True)
+os.makedirs(settings.DOCUMENTS_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
@@ -78,3 +87,4 @@ def health_check():
 
 #   cd frontend && npm run dev
 #   http://localhost:3000
+

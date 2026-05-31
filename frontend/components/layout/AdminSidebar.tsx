@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -24,6 +25,9 @@ export function AdminSidebar() {
   const pathname = usePathname()
   const { t } = useI18n()
   const { currentUser, logout } = useAuth()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => setMounted(true), [])
 
   return (
     <aside className="w-64 h-screen bg-white border-r border-gray-100 flex flex-col fixed left-0 top-0 z-40">
@@ -36,11 +40,11 @@ export function AdminSidebar() {
       <div className="px-4 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 font-semibold text-sm">
-            {currentUser?.email?.[0]?.toUpperCase() ?? 'A'}
+            {mounted ? (currentUser?.email?.[0]?.toUpperCase() ?? 'A') : 'A'}
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-medium text-gray-900 truncate">
-              {currentUser?.email}
+              {mounted ? currentUser?.email : ''}
             </span>
             <span className="text-xs text-amber-500 font-medium">Administrator</span>
           </div>

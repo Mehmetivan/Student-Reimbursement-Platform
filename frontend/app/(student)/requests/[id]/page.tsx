@@ -6,11 +6,14 @@ import { studentApi } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { Topbar } from '@/components/layout/Topbar'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { RequestStatusBadge } from '@/components/ui/Badge'
-import { ArrowLeft, MessageSquare } from 'lucide-react'
+import { ArrowLeft, MessageSquare, Image, ExternalLink } from 'lucide-react'
 import type { ReimbursementRequest, RequestStatus } from '@/types'
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function StudentRequestDetailPage() {
   const { t } = useI18n()
@@ -18,6 +21,7 @@ export default function StudentRequestDetailPage() {
   const router = useRouter()
   const [request, setRequest] = useState<ReimbursementRequest | null>(null)
   const [loading, setLoading] = useState(true)
+  const [viewingReceipt, setViewingReceipt] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -46,7 +50,6 @@ export default function StudentRequestDetailPage() {
     pending: t('statusPending'),
     approved: t('statusApproved'),
     rejected: t('statusRejected'),
-    under_review: t('statusUnderReview'),
   }
 
   return (
@@ -95,19 +98,66 @@ export default function StudentRequestDetailPage() {
         {/* Receipts */}
         <Card>
           <CardHeader>
-            <h3 className="font-semibold text-gray-900">Submitted Receipts</h3>
+            <h3 className="font-semibold text-gray-900">Submitted Receipt</h3>
           </CardHeader>
           <CardBody className="flex flex-col gap-3">
             {request.receipts.map((receipt) => (
-              <div key={receipt.receipt_id} className="bg-gray-50 rounded-xl p-3">
-                <p className="text-xs text-gray-400 font-mono">{receipt.receipt_id}</p>
-                <p className="text-xs text-gray-400 mt-1 font-mono truncate">{receipt.sha256_hash}</p>
+              <div key={receipt.receipt_id} className="flex flex-col gap-2">
+                {receipt.file_path ? (
+                  <>
+                    <img
+                      src={`${BASE_URL}/${receipt.file_path}`}
+                      alt="Receipt"
+                      className="w-full rounded-xl border border-gray-100 object-contain max-h-64 cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setViewingReceipt(`${BASE_URL}/${receipt.file_path}`)}
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="self-start"
+                      onClick={() => setViewingReceipt(`${BASE_URL}/${receipt.file_path!}`)}
+                    >
+                      <Image className="h-4 w-4" />
+                      View Receipt
+                    </Button>
+                  </>
+                ) : (
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs text-gray-400 font-mono">{receipt.receipt_id}</p>
+                    <p className="text-xs text-gray-400 mt-1 font-mono truncate">{receipt.sha256_hash}</p>
+                  </div>
+                )}
               </div>
             ))}
           </CardBody>
         </Card>
 
       </div>
+
+      {/* Receipt viewer modal */}
+      <Modal
+        open={!!viewingReceipt}
+        onClose={() => setViewingReceipt(null)}
+        title="Receipt"
+      >
+        {viewingReceipt && (
+          <div className="flex flex-col gap-3">
+            <img
+              src={viewingReceipt}
+              alt="Receipt"
+              className="w-full rounded-xl object-contain max-h-[70vh]"
+            />
+            <a
+              href={viewingReceipt}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-violet-600 hover:underline flex items-center gap-1 self-center"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Open in new tab
+            </a>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
