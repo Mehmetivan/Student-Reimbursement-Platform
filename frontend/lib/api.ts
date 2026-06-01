@@ -52,7 +52,6 @@ export const authApi = {
   },
 
   login: async (email: string, password: string): Promise<LoginResponse> => {
-    // FastAPI OAuth2 expects form data, not JSON
     const formData = new URLSearchParams()
     formData.append('username', email)
     formData.append('password', password)
@@ -108,24 +107,35 @@ export const studentApi = {
     return data
   },
 
-  submitReceipt: async (file: File): Promise<unknown> => {
+  submitReceipt: async (file: File, comment?: string): Promise<unknown> => {
     const formData = new FormData()
     formData.append('file', file)
+    if (comment) formData.append('comment', comment)
     const { data } = await api.post('/receipts/submit', formData)
+    return data
+  },
+
+  resubmitReceipt: async (requestId: number, file: File, comment?: string): Promise<unknown> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (comment) formData.append('comment', comment)
+    const { data } = await api.patch(`/receipts/resubmit/${requestId}`, formData)
     return data
   },
 
   getMyDocuments: async (): Promise<{ document_id: string; document_type: string; file_path: string; uploaded_at: string }[]> => {
     const { data } = await api.get('/students/me/documents')
     return data
-},
-
+  },
+  confirmReceipt: async (requestId: number): Promise<unknown> => {
+    const { data } = await api.patch(`/receipts/confirm/${requestId}`)
+    return data
+  },
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export const adminApi = {
-  // Students
   getStudents: async (status?: string): Promise<StudentDetail[]> => {
     const params = status ? { status } : {}
     const { data } = await api.get('/admin/students', { params })
@@ -142,10 +152,7 @@ export const adminApi = {
     decision: 'approve' | 'reject',
     note?: string
   ): Promise<unknown> => {
-    const { data } = await api.patch(`/admin/students/${studentId}/decision`, {
-      decision,
-      note,
-    })
+    const { data } = await api.patch(`/admin/students/${studentId}/decision`, { decision, note })
     return data
   },
 
@@ -157,7 +164,6 @@ export const adminApi = {
     return data
   },
 
-  // Requests
   getRequests: async (status?: string, timeframe?: string): Promise<ReimbursementRequest[]> => {
     const params: Record<string, string> = {}
     if (status) params.status = status
@@ -168,13 +174,12 @@ export const adminApi = {
 
   decideRequest: async (
     requestId: number,
-    decision: 'approve' | 'reject' | 'under_review',
+    decision: 'approve' | 'reject',
     note?: string
   ): Promise<ReimbursementRequest> => {
-    const { data } = await api.patch(`/admin/requests/${requestId}/decision`, {
-      decision,
-      note,
-    })
+    const { data } = await api.patch(`/admin/requests/${requestId}/decision`, { decision, note })
     return data
   },
+
+
 }

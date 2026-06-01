@@ -124,9 +124,11 @@ export interface ReimbursementRequest {
   admin_feedback: string | null
   submit_timestamp: string
   review_timestamp: string | null
+  confirmed: boolean
+  resubmission_count: number
+  last_resubmit_timestamp: string | null
   receipts: Receipt[]
 }
-
 // ── API Error ─────────────────────────────────────────────────────────────────
 
 export interface ApiError {

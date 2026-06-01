@@ -1,9 +1,9 @@
 # app/services/receipt_service.py
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from sqlalchemy.orm import Session
 
@@ -16,6 +16,8 @@ from .validation.anomaly_service import AnomalyService
 from .validation.exif_service import ExifService
 from .validation.hash_service import HashService
 from .validation.multi_ocr_service import MultiOCRService
+
+#RESUBMIT_WINDOW_MINUTES = 30
 
 
 class ReceiptService:
@@ -46,16 +48,32 @@ class ReceiptService:
         receipt_uuid: str,
         relative_file_path: str,
         sha256_hash: str,
-        comment: str = "Receipt submission"
+        comment: Optional[str] = None
     ) -> tuple[RequestModel, Receipt]:
         """
         Create the Request and Receipt DB records after Layer 1 passes.
+        Deletes any previous unconfirmed requests for this student first.
         Returns (request, receipt)
         """
+        # Delete any previous unconfirmed requests for this student
+        old_unconfirmed = db.query(RequestModel).filter(
+            RequestModel.student_id == student_id,
+            RequestModel.confirmed == False
+        ).all()
+        for old_req in old_unconfirmed:
+            for old_receipt in old_req.receipts:
+                old_file = Path(old_receipt.file_path)
+                if old_file.exists():
+                    old_file.unlink()
+            db.delete(old_req)
+        if old_unconfirmed:
+            db.flush()
+
         new_request = RequestModel(
             student_id=student_id,
-            comment=comment,
-            status=RequestStatus.PENDING
+            comment=comment or "Receipt submission",
+            status=RequestStatus.PENDING,
+            confirmed=False
         )
         db.add(new_request)
         db.flush()
@@ -73,14 +91,48 @@ class ReceiptService:
         return new_request, new_receipt
 
     @staticmethod
+    def _attach_receipt_to_existing_request(
+        db: Session,
+        student_id: int,
+        request_id: int,
+        receipt_uuid: str,
+        relative_file_path: str,
+        sha256_hash: str,
+    ) -> tuple[RequestModel, Receipt]:
+        """
+        Attach a new receipt to an existing request (used for resubmission).
+        Returns (request, receipt)
+        """
+        request = db.query(RequestModel).filter(
+            RequestModel.request_id == request_id
+        ).first()
+
+        new_receipt = Receipt(
+            receipt_id=receipt_uuid,
+            student_id=student_id,
+            request_id=request_id,
+            file_path=relative_file_path,
+            sha256_hash=sha256_hash
+        )
+        db.add(new_receipt)
+        db.flush()
+
+        return request, new_receipt
+
+    @staticmethod
     async def run_full_pipeline(
         db: Session,
         file_path: Path,
         student_id: int,
-        filename: str
+        filename: str,
+        comment: Optional[str] = None,
+        existing_request_id: Optional[int] = None
     ) -> Dict:
         """
         Run all 5 fraud detection layers on an uploaded receipt.
+
+        If existing_request_id is provided, attaches the receipt to that request
+        (resubmission flow). Otherwise creates a new request.
 
         Returns a structured result dict with layer results and final assessment.
         Early-exits with action='rejected' if Layer 1 or Layer 4 detect fraud.
@@ -109,15 +161,27 @@ class ReceiptService:
                 "database_saved": False
             }
 
-        # ── Layer 1 passed — persist the file and create DB records ──────────
+        # ── Layer 1 passed — persist the file and create/attach DB records ───
         receipt_uuid, permanent_path, relative_file_path = ReceiptService._save_file_permanently(file_path)
-        ReceiptService._create_request_and_receipt(
-            db=db,
-            student_id=student_id,
-            receipt_uuid=receipt_uuid,
-            relative_file_path=relative_file_path,
-            sha256_hash=layer1_result["sha256_hash"]
-        )
+
+        if existing_request_id:
+            request, _ = ReceiptService._attach_receipt_to_existing_request(
+                db=db,
+                student_id=student_id,
+                request_id=existing_request_id,
+                receipt_uuid=receipt_uuid,
+                relative_file_path=relative_file_path,
+                sha256_hash=layer1_result["sha256_hash"]
+            )
+        else:
+            request, _ = ReceiptService._create_request_and_receipt(
+                db=db,
+                student_id=student_id,
+                receipt_uuid=receipt_uuid,
+                relative_file_path=relative_file_path,
+                sha256_hash=layer1_result["sha256_hash"],
+                comment=comment
+            )
 
         # ── Layer 2: EXIF metadata analysis ──────────────────────────────────
         layer2_result = ExifService.analyze_exif(permanent_path)
@@ -174,6 +238,7 @@ class ReceiptService:
                 "action": "rejected",
                 "message": f"DUPLICATE FRAUD: Receipt ID {layer4_result['extracted_receipt_id']} was already submitted.",
                 "receipt_id": receipt_uuid,
+                "request_id": request.request_id,
                 "layer1": layer1_result,
                 "layer2": layer2_result,
                 "layer3": layer3_data,
@@ -205,11 +270,18 @@ class ReceiptService:
             action = "approved"
             message = "APPROVED: Receipt passed all validation checks."
 
+        # OCR result for student feedback
+        stpt_found = layer3_data["stpt_id"] is not None
+        stpt_matches = risk_assessment.risk_factors["layer3_ocr"]["stpt_id_matches"]
+        receipt_id_found = layer4_result.get("extracted_receipt_id") is not None
+
         return {
             "action": action,
             "message": message,
             "receipt_id": receipt_uuid,
+            "request_id": request.request_id,
             "file_location": relative_file_path,
+            "confirmed": request.confirmed,
             "layer1_hash": {
                 "sha256_hash": layer1_result["sha256_hash"],
                 "is_duplicate": False,
@@ -225,13 +297,15 @@ class ReceiptService:
             },
             "layer3_ocr": {
                 "extracted_stpt_id": layer3_data["stpt_id"],
-                "stpt_id_matches_student": risk_assessment.risk_factors["layer3_ocr"]["stpt_id_matches"],
+                "stpt_id_found": stpt_found,
+                "stpt_id_matches_student": stpt_matches,
                 "ocr_consensus": consensus["all_agree"],
                 "engines_agree_count": consensus["agreement_count"],
                 "risk_score": risk_assessment.layer3_risk
             },
             "layer4_anomaly": {
                 "extracted_receipt_id": layer4_result.get("extracted_receipt_id"),
+                "receipt_id_found": receipt_id_found,
                 "is_duplicate": layer4_result.get("is_duplicate", False),
                 "similar_pattern_count": layer4_result.get("similar_pattern_count", 0),
                 "assessment": layer4_result.get("assessment"),
@@ -241,6 +315,11 @@ class ReceiptService:
                 "total_risk_score": total_risk,
                 "assessment": risk_assessment.assessment,
                 "risk_breakdown": risk_assessment.risk_factors
+            },
+            "ocr_summary": {
+                "stpt_id_found": stpt_found,
+                "stpt_id_matches": stpt_matches,
+                "receipt_id_found": receipt_id_found,
             },
             "database_saved": True
         }

@@ -8,13 +8,12 @@ from .receipt import ReceiptResponse
 
 class RequestStatus(str, Enum):
     PENDING = "pending"
-    UNDER_REVIEW = "under_review"
     APPROVED = "approved"
     REJECTED = "rejected"
 
 
 class RequestDecisionRequest(BaseModel):
-    decision: str  # "approve", "reject", "under_review"
+    decision: str
     note: Optional[str] = None
 
 
@@ -26,4 +25,7 @@ class ReimbursementRequestResponse(BaseModel):
     admin_feedback: Optional[str] = None
     submit_timestamp: datetime
     review_timestamp: Optional[datetime] = None
+    confirmed: bool = False
+    resubmission_count: int = 0
+    last_resubmit_timestamp: Optional[datetime] = None
     receipts: list[ReceiptResponse] = []

@@ -3,7 +3,7 @@ echo Starting Student Reimbursement Platform...
 
 start "Backend" cmd /k "cd /d C:\Users\mehme\student_reimbursement_platform\backend && venv\Scripts\activate && python -m uvicorn app.main:app --reload"
 
-timeout /t 3 /nobreak > nul
+timeout /t 6 /nobreak > nul
 
 start "Frontend" cmd /k "cd /d C:\Users\mehme\student_reimbursement_platform\frontend && npm run dev"
 

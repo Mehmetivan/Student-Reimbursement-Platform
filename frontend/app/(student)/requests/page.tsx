@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { Topbar } from '@/components/layout/Topbar'
 import { PageSpinner } from '@/components/ui/Spinner'
 import { RequestStatusBadge } from '@/components/ui/Badge'
-import { PlusCircle, FileText, ChevronRight } from 'lucide-react'
+import { PlusCircle, FileText, ChevronRight, Clock } from 'lucide-react'
 import type { ReimbursementRequest, RequestStatus } from '@/types'
 
 const STATUS_FILTERS: { value: string; labelKey: 'allStatuses' | 'statusPending' | 'statusApproved' | 'statusRejected' }[] = [
@@ -49,7 +49,6 @@ export default function StudentRequestsPage() {
       <Topbar title={t('requestsTitle')} />
       <div className="p-6 flex flex-col gap-4">
 
-        {/* Header actions */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2 flex-wrap">
             {STATUS_FILTERS.map(({ value, labelKey }) => (
@@ -74,7 +73,6 @@ export default function StudentRequestsPage() {
           </Link>
         </div>
 
-        {/* List */}
         {loading ? (
           <PageSpinner />
         ) : requests.length === 0 ? (
@@ -103,16 +101,17 @@ export default function StudentRequestsPage() {
                         {t('submittedOn')}: {formatDate(req.submit_timestamp)}
                       </p>
                       {req.admin_feedback && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          💬 {req.admin_feedback}
-                        </p>
+                        <p className="text-xs text-gray-500 mt-1">💬 {req.admin_feedback}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      <RequestStatusBadge
-                        status={req.status}
-                        label={statusLabels[req.status]}
-                      />
+                      {!req.confirmed && req.status === 'pending' && (
+                        <span className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg">
+                          <Clock className="h-3 w-3" />
+                          Awaiting confirmation
+                        </span>
+                      )}
+                      <RequestStatusBadge status={req.status} label={statusLabels[req.status]} />
                       <ChevronRight className="h-4 w-4 text-gray-400" />
                     </div>
                   </CardBody>

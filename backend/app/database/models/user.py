@@ -20,3 +20,35 @@ class User(Base):
 
     # Relationship to student profile
     student = relationship("Student", back_populates="user", uselist=False)
+
+
+"""
+
+python -c "
+from app.database.base import Base
+from app.database.models.user import User, UserRole
+from app.database.models.student import Student
+from app.database.models.request import Request
+from app.database.models.receipt import Receipt
+from app.database.models.student_document import StudentDocument
+from app.database.models.receipt_metadata import ReceiptMetadata
+from app.database.models.receipt_ocr import ReceiptOCR
+from app.database.models.receipt_anomalies import ReceiptAnomalies
+from app.database.models.receipt_risk_assessment import ReceiptRiskAssessment
+from app.database.session import SessionLocal
+from app.services.auth_service import AuthService
+
+db = SessionLocal()
+admin = User(
+    email='admin@test.com',
+    passwd=AuthService.hash_password('admin123'),
+    role=UserRole.ADMIN
+)
+db.add(admin)
+db.commit()
+print('Admin created: admin@test.com / admin123')
+db.close()
+"
+
+
+"""

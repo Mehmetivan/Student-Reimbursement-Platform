@@ -11,11 +11,8 @@ from ..database.models.student import Student
 
 class RequestService:
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
     @staticmethod
     def _format_request(request: Request, include_fraud_details: bool = False) -> dict:
-        """Format a request record into a response dict."""
         receipts = []
         for receipt in request.receipts:
             r = {
@@ -44,12 +41,14 @@ class RequestService:
             "admin_feedback": request.admin_feedback,
             "submit_timestamp": request.submit_timestamp,
             "review_timestamp": request.review_timestamp,
+            "confirmed": request.confirmed,
+            "resubmission_count": request.resubmission_count,
+            "last_resubmit_timestamp": request.last_resubmit_timestamp,
             "receipts": receipts,
         }
 
     @staticmethod
     def _apply_timeframe_filter(query, timeframe: Optional[str]):
-        """Apply a timeframe filter to a query on submit_timestamp."""
         if not timeframe:
             return query
         now = datetime.utcnow()
@@ -66,27 +65,20 @@ class RequestService:
             query = query.filter(Request.submit_timestamp >= cutoff)
         return query
 
-    # ── Student ───────────────────────────────────────────────────────────────
-
     @staticmethod
     def get_student_requests(
         db: Session,
         student_id: int,
         status: Optional[str] = None
     ) -> list:
-        """Get all requests for a student, optionally filtered by status."""
         query = db.query(Request).filter(Request.student_id == student_id)
-
         if status:
             try:
                 query = query.filter(Request.status == RequestStatus(status))
             except ValueError:
                 pass
-
         requests = query.order_by(Request.submit_timestamp.desc()).all()
         return [RequestService._format_request(r) for r in requests]
-
-    # ── Admin ─────────────────────────────────────────────────────────────────
 
     @staticmethod
     def get_all_requests(
@@ -94,12 +86,8 @@ class RequestService:
         status: Optional[str] = None,
         timeframe: Optional[str] = None
     ) -> list:
-        """
-        Get all requests across all students.
-        Filterable by status and timeframe.
-        Includes full fraud detection results per receipt.
-        """
-        query = db.query(Request)
+        """Only returns confirmed requests — student has reviewed and submitted."""
+        query = db.query(Request).filter(Request.confirmed == True)
 
         if status:
             try:
@@ -118,25 +106,19 @@ class RequestService:
         decision: str,
         feedback: Optional[str] = None
     ) -> dict:
-        """
-        Admin approves or rejects a reimbursement request.
-        Sets status, records review timestamp, and saves feedback message.
-        """
         request = db.query(Request).filter(Request.request_id == request_id).first()
         if not request:
             return {"error": "Request not found"}
 
-        if request.status not in [RequestStatus.PENDING, RequestStatus.UNDER_REVIEW]:
+        if request.status not in [RequestStatus.PENDING]:
             return {"error": f"Request already decided (status: {request.status})"}
 
         if decision == "approve":
             request.status = RequestStatus.APPROVED
         elif decision == "reject":
             request.status = RequestStatus.REJECTED
-        elif decision == "under_review":
-            request.status = RequestStatus.UNDER_REVIEW
         else:
-            return {"error": "Decision must be 'approve', 'reject', or 'under_review'"}
+            return {"error": "Decision must be 'approve' or 'reject'"}
 
         request.review_timestamp = datetime.utcnow()
         request.admin_feedback = feedback
