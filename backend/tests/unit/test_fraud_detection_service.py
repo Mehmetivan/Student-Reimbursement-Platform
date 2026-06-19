@@ -8,6 +8,8 @@ from app.database.models.user import User, UserRole
 from app.database.models.receipt_metadata import ReceiptMetadata
 from app.database.models.receipt_ocr import ReceiptOCR
 from app.database.models.receipt_risk_assessment import ReceiptRiskAssessment
+import json
+from app.database.models.receipt_anomalies import ReceiptAnomalies
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -307,3 +309,282 @@ class TestUpdateFinalRiskAssessment:
         assert factors["layer2_exif"]["weight"] == LAYER_WEIGHTS["layer2"]
         assert factors["layer3_ocr"]["weight"] == LAYER_WEIGHTS["layer3"]
         assert factors["layer4_anomaly"]["weight"] == LAYER_WEIGHTS["layer4"]
+
+
+class TestSaveLayer2Results:
+    """Tests for saving Layer 2 EXIF analysis results."""
+
+    def test_saves_new_metadata_record(self, db_session):
+        """
+        TEST CASE: When no metadata exists for a receipt, save_layer2_results
+        must create a new ReceiptMetadata record.
+        WHY: This is the entry point for storing EXIF analysis. Without
+        creation, Layer 5 aggregation would have no data to work with.
+        """
+        _setup_receipt(db_session, receipt_uuid="test-l2-new")
+        # Delete the metadata that _setup_receipt creates so we test fresh insert
+        db_session.query(ReceiptMetadata).filter(
+            ReceiptMetadata.receipt_id == "test-l2-new"
+        ).delete()
+        db_session.commit()
+
+        analysis = {
+            "exif_status": "present",
+            "has_editing_software": True,
+            "editing_software": "Photoshop",
+            "is_mobile_camera": False,
+            "camera_model": None,
+            "photo_age_days": 5,
+            "has_inconsistencies": True,
+            "flags": ["post_capture_editing_detected"],
+            "risk_score": 0.8,
+        }
+        result = FraudDetectionService.save_layer2_results(
+            db=db_session, receipt_id="test-l2-new", layer2_analysis=analysis
+        )
+        assert result.has_editing_software is True
+        assert result.editing_software_name == "Photoshop"
+        assert result.layer2_risk_score == 0.8
+        assert "post_capture_editing_detected" in result.exif_flags
+
+    def test_updates_existing_metadata_record(self, db_session):
+        """
+        TEST CASE: When a metadata record already exists, save_layer2_results
+        must update it in place rather than create a duplicate.
+        WHY: Resubmissions reuse the same receipt_id — duplicate metadata
+        records would break the one-to-one relationship.
+        """
+        _setup_receipt(db_session, receipt_uuid="test-l2-update", layer2_risk=0.1)
+
+        new_analysis = {
+            "exif_status": "missing",
+            "has_editing_software": False,
+            "is_mobile_camera": False,
+            "flags": ["no_exif_data"],
+            "risk_score": 0.8,
+        }
+        result = FraudDetectionService.save_layer2_results(
+            db=db_session, receipt_id="test-l2-update", layer2_analysis=new_analysis
+        )
+        assert result.layer2_risk_score == 0.8
+        assert result.exif_status == "missing"
+
+        # Verify only one record exists
+        count = db_session.query(ReceiptMetadata).filter(
+            ReceiptMetadata.receipt_id == "test-l2-update"
+        ).count()
+        assert count == 1
+
+    def test_missing_fields_use_defaults(self, db_session):
+        """
+        TEST CASE: When the analysis dict is missing optional fields,
+        save must use sensible defaults rather than crash.
+        WHY: Defensive coding — Layer 2 may return varying dict shapes
+        depending on the analysis path. The save method must handle all cases.
+        """
+        _setup_receipt(db_session, receipt_uuid="test-l2-defaults")
+        db_session.query(ReceiptMetadata).filter(
+            ReceiptMetadata.receipt_id == "test-l2-defaults"
+        ).delete()
+        db_session.commit()
+
+        minimal_analysis = {"risk_score": 0.5}
+        result = FraudDetectionService.save_layer2_results(
+            db=db_session, receipt_id="test-l2-defaults", layer2_analysis=minimal_analysis
+        )
+        assert result.has_editing_software is False
+        assert result.layer2_risk_score == 0.5
+
+
+class TestSaveLayer3Results:
+    """Tests for saving Layer 3 OCR analysis results."""
+
+    def test_stpt_id_matches_exactly(self, db_session):
+        """
+        TEST CASE: When extracted STPT ID matches the student's exactly,
+        stpt_id_matches_student must be True and layer3 risk must be 0.
+        WHY: An exact match is the strongest positive signal — the receipt
+        clearly belongs to this student.
+        """
+        student, _ = _setup_receipt(db_session, receipt_uuid="test-l3-match")
+        # Clear default OCR record
+        db_session.query(ReceiptOCR).filter(
+            ReceiptOCR.receipt_id == "test-l3-match"
+        ).delete()
+        db_session.commit()
+
+        ocr_result = {
+            "stpt_id": "00555845",  # Same as student's stpt_id
+            "stpt_id_confidence": 0.95,
+            "average_confidence": 0.9,
+            "raw_text": "Receipt text"
+        }
+        result = FraudDetectionService.save_layer3_results(
+            db=db_session,
+            receipt_id="test-l3-match",
+            student_id=student.student_id,
+            ocr_result=ocr_result,
+        )
+        assert result.stpt_id_matches_student is True
+        assert result.layer3_risk_score == 0.0
+
+    def test_stpt_id_substring_match_handles_leading_zeros(self, db_session):
+        """
+        TEST CASE: When extracted STPT ID is "555845" and stored is "00555845",
+        the substring check must recognize them as a match.
+        WHY: Receipts often print the STPT ID without leading zeros while
+        the STPT card includes them. This is a real production case that
+        would otherwise incorrectly flag legitimate receipts.
+        """
+        student, _ = _setup_receipt(db_session, receipt_uuid="test-l3-substring")
+        db_session.query(ReceiptOCR).filter(
+            ReceiptOCR.receipt_id == "test-l3-substring"
+        ).delete()
+        db_session.commit()
+
+        ocr_result = {
+            "stpt_id": "555845",  # No leading zeros — receipt format
+            "stpt_id_confidence": 0.9,
+            "raw_text": ""
+        }
+        result = FraudDetectionService.save_layer3_results(
+            db=db_session,
+            receipt_id="test-l3-substring",
+            student_id=student.student_id,
+            ocr_result=ocr_result,
+        )
+        assert result.stpt_id_matches_student is True
+
+    def test_stpt_id_mismatch_gives_high_risk(self, db_session):
+        """
+        TEST CASE: When extracted STPT ID does NOT match the student's,
+        layer3 risk must include 0.9 (mismatch penalty).
+        WHY: An STPT ID mismatch is one of the strongest fraud signals —
+        the receipt belongs to a different person. Must trigger high risk.
+        """
+        student, _ = _setup_receipt(db_session, receipt_uuid="test-l3-mismatch")
+        db_session.query(ReceiptOCR).filter(
+            ReceiptOCR.receipt_id == "test-l3-mismatch"
+        ).delete()
+        db_session.commit()
+
+        ocr_result = {
+            "stpt_id": "99999999",  # Completely different
+            "stpt_id_confidence": 0.9,
+            "raw_text": ""
+        }
+        result = FraudDetectionService.save_layer3_results(
+            db=db_session,
+            receipt_id="test-l3-mismatch",
+            student_id=student.student_id,
+            ocr_result=ocr_result,
+        )
+        assert result.stpt_id_matches_student is False
+        assert result.layer3_risk_score >= 0.9
+        flags = json.loads(result.ocr_flags)
+        assert "stpt_id_mismatch" in flags
+
+    def test_stpt_id_not_found_gives_medium_risk(self, db_session):
+        """
+        TEST CASE: When OCR fails to extract any STPT ID, layer3 risk must
+        include 0.4 (not-found penalty).
+        WHY: A missing STPT ID could be a bad photo or a non-STPT receipt.
+        Either way needs manual review.
+        """
+        student, _ = _setup_receipt(db_session, receipt_uuid="test-l3-notfound")
+        db_session.query(ReceiptOCR).filter(
+            ReceiptOCR.receipt_id == "test-l3-notfound"
+        ).delete()
+        db_session.commit()
+
+        ocr_result = {
+            "stpt_id": None,
+            "stpt_id_confidence": 0.0,
+            "raw_text": ""
+        }
+        result = FraudDetectionService.save_layer3_results(
+            db=db_session,
+            receipt_id="test-l3-notfound",
+            student_id=student.student_id,
+            ocr_result=ocr_result,
+        )
+        assert result.layer3_risk_score >= 0.4
+        flags = json.loads(result.ocr_flags)
+        assert "stpt_id_not_found" in flags
+
+    def test_low_confidence_adds_risk(self, db_session):
+        """
+        TEST CASE: When OCR confidence is below 0.7, an additional 0.2 risk
+        is added.
+        WHY: Low confidence means the extracted ID could be wrong — even
+        if it matches, the match itself is unreliable.
+        """
+        student, _ = _setup_receipt(db_session, receipt_uuid="test-l3-lowconf")
+        db_session.query(ReceiptOCR).filter(
+            ReceiptOCR.receipt_id == "test-l3-lowconf"
+        ).delete()
+        db_session.commit()
+
+        ocr_result = {
+            "stpt_id": "00555845",
+            "stpt_id_confidence": 0.5,  # Below 0.7 threshold
+            "raw_text": ""
+        }
+        result = FraudDetectionService.save_layer3_results(
+            db=db_session,
+            receipt_id="test-l3-lowconf",
+            student_id=student.student_id,
+            ocr_result=ocr_result,
+        )
+        # Match: 0, low confidence: +0.2 = 0.2
+        assert result.layer3_risk_score == 0.2
+        flags = json.loads(result.ocr_flags)
+        assert "low_ocr_confidence" in flags
+
+
+class TestSaveLayer4Results:
+    """Tests for saving Layer 4 anomaly results."""
+
+    def test_saves_anomaly_record(self, db_session):
+        """
+        TEST CASE: save_layer4_results must persist the anomaly analysis
+        into the receipt_anomalies table.
+        WHY: Layer 4 results feed into Layer 5 aggregation. Without saving,
+        the final risk score wouldn't reflect Layer 4 findings.
+        """
+        _setup_receipt(db_session, receipt_uuid="test-l4-save")
+
+        analysis = {
+            "length_anomaly": False,
+            "prefix_rarity_score": 0.5,
+            "digram_rarity_score": 0.4,
+            "layer4_risk_score": 0.6,
+        }
+        result = FraudDetectionService.save_layer4_results(
+            db=db_session, receipt_id="test-l4-save", layer4_analysis=analysis
+        )
+        assert result.layer4_risk_score == 0.6
+        assert result.prefix_rarity_score == 0.5
+
+    def test_writes_extracted_receipt_id_back_to_ocr(self, db_session):
+        """
+        TEST CASE: When the layer4 analysis includes an extracted_receipt_id,
+        that ID must be written back to the ReceiptOCR record.
+        WHY: Layer 3 leaves extracted_receipt_id as None because the receipt
+        ID is actually extracted by Layer 4. This writeback ensures the OCR
+        record reflects all extracted data for admin viewing.
+        """
+        _setup_receipt(db_session, receipt_uuid="test-l4-writeback")
+
+        analysis = {
+            "extracted_receipt_id": "324-19204-128165",
+            "layer4_risk_score": 0.8,
+        }
+        FraudDetectionService.save_layer4_results(
+            db=db_session, receipt_id="test-l4-writeback", layer4_analysis=analysis
+        )
+
+        ocr_record = db_session.query(ReceiptOCR).filter(
+            ReceiptOCR.receipt_id == "test-l4-writeback"
+        ).first()
+        assert ocr_record.extracted_receipt_id == "324-19204-128165"  

@@ -56,9 +56,10 @@ class ReceiptService:
         Returns (request, receipt)
         """
         # Delete any previous unconfirmed requests for this student
+        from sqlalchemy import false as sa_false
         old_unconfirmed = db.query(RequestModel).filter(
             RequestModel.student_id == student_id,
-            RequestModel.confirmed == False
+            RequestModel.confirmed.is_(False)
         ).all()
         for old_req in old_unconfirmed:
             for old_receipt in old_req.receipts:
