@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from ..schemas.auth import RegisterRequest, RegisterResponse, LoginResponse, MeResponse, ChangePasswordRequest
 
 from ..dependencies import get_db, get_current_user
 from ..services.auth_service import AuthService
@@ -37,3 +38,24 @@ def me(current_user: User = Depends(get_current_user), db: Session = Depends(get
         response["student_id"] = current_user.student.student_id
         response["account_status"] = current_user.student.account_status
     return response
+
+@router.patch("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Change the authenticated user's password."""
+    if not AuthService.verify_password(payload.current_password, current_user.passwd):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters"
+        )
+    current_user.passwd = AuthService.hash_password(payload.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}

@@ -21,8 +21,26 @@ from ..services.validation.hash_service import HashService
 from ..services.validation.multi_ocr_service import MultiOCRService
 from ..services.validation.ocr_service import OCRService
 
+
+
+
+
 router = APIRouter(prefix="/test", tags=["test — dev only"])
 
+def _sanitize_for_json(obj):
+    """Convert PIL IFDRational and other non-serializable types to JSON-safe values."""
+    if hasattr(obj, 'numerator') and hasattr(obj, 'denominator'):
+        try:
+            return float(obj)
+        except Exception:
+            return str(obj)
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='ignore')
+    return obj
 
 def get_db():
     db = SessionLocal()
@@ -124,7 +142,7 @@ async def test_exif_layer(file: UploadFile = File(...)):
         result = ExifService.analyze_exif(temp_path)
         result["filename"] = file.filename
         result["file_size"] = temp_path.stat().st_size
-        result["raw_exif_data"] = raw_exif
+        result["raw_exif_data"] = _sanitize_for_json(raw_exif)
 
         if result["assessment"] == "high_risk":
             result["message"] = "HIGH RISK: Image shows signs of editing or manipulation."

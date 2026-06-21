@@ -33,6 +33,7 @@ export default function ProfilePage() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null)
   const [uploadResults, setUploadResults] = useState<Record<string, string>>({})
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [viewingDoc, setViewingDoc] = useState<{ url: string; label: string } | null>(null)
 
   const loadDocuments = async () => {
@@ -77,6 +78,7 @@ export default function ProfilePage() {
     file: File
   ) => {
     setUploadingDoc(type)
+    setUploadError(null)
     try {
       let result: Record<string, unknown>
       if (type === 'student-id') result = await studentApi.uploadStudentId(file) as Record<string, unknown>
@@ -93,6 +95,9 @@ export default function ProfilePage() {
           stpt: `STPT ID extracted: ${result.extracted_stpt_id}`,
         }))
       }
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setUploadError(detail || 'Upload failed')
     } finally {
       setUploadingDoc(null)
     }
@@ -184,6 +189,11 @@ export default function ProfilePage() {
             <p className="text-xs text-gray-400 mt-0.5">All 3 documents are required before your account can be approved</p>
           </CardHeader>
           <CardBody className="flex flex-col gap-5">
+            {uploadError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
+                {uploadError}
+              </div>
+            )}
             <FileUpload
               label={t('uploadStudentId')}
               uploaded={profile?.documents_uploaded.student_id_photo ?? false}

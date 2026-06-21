@@ -12,10 +12,10 @@ import json
 # Weights for the weighted sum risk aggregation (Layer 5)
 # Must sum to 1.0
 LAYER_WEIGHTS = {
-    "layer1": 0.35,  # Hash — exact duplicate is a strong fraud signal
-    "layer2": 0.20,  # EXIF — metadata anomalies are indicative but not definitive
-    "layer3": 0.35,  # OCR — STPT ID mismatch is a strong fraud signal
-    "layer4": 0.10,  # Anomaly — pattern analysis is supportive but less definitive
+    "layer1": 0.30,  # Hash — exact duplicate is a strong fraud signal
+    "layer2": 0.25,  # EXIF — metadata anomalies are indicative but not definitive
+    "layer3": 0.20,  # OCR — STPT ID mismatch is a strong fraud signal
+    "layer4": 0.25,  # Anomaly — pattern analysis is supportive but less definitive
 }
 
 

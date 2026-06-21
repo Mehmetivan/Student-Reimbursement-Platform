@@ -30,8 +30,10 @@ export default function SettingsPage() {
       await api.patch('/auth/change-password', { current_password: current, new_password: newPass })
       setMessage({ type: 'success', text: 'Password changed successfully' })
       setCurrent(''); setNewPass(''); setConfirm('')
-    } catch {
-      setMessage({ type: 'error', text: 'Current password is incorrect' })
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string }; status?: number } })?.response?.data?.detail
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setMessage({ type: 'error', text: detail || `Error ${status || 'unknown'}` })
     } finally {
       setSaving(false)
     }

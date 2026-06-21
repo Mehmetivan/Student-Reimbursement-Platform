@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
 from ..config import settings
 from ..database.models.student import Student, AccountStatus
@@ -178,9 +179,37 @@ class StudentService:
         extracted_stpt_id = ocr_result.get("extracted_stpt_id")
 
         ocr_status = "not_found"
+        note = "Could not extract STPT ID automatically. An admin may update it manually."
+
         if extracted_stpt_id:
+            # Check if another student already has this STPT ID
+            existing = db.query(Student).filter(
+                Student.stpt_id == extracted_stpt_id,
+                Student.student_id != student.student_id
+            ).first()
+
+            if existing:
+                # Delete the uploaded file since we're rejecting
+                
+                Path(file_path).unlink(missing_ok=True)
+                # Also remove the document record we just created
+                doc = db.query(StudentDocument).filter(
+                    StudentDocument.student_id == student.student_id,
+                    StudentDocument.document_type == DocumentType.STPT_CARD
+                ).first()
+                if doc:
+                    db.delete(doc)
+                db.commit()
+
+            
+                raise HTTPException(
+                    status_code=400,
+                    detail="This STPT card is already registered to another student. If you believe this is an error, please contact an administrator."
+                )
+
             student.stpt_id = extracted_stpt_id
             ocr_status = "extracted"
+            note = "STPT ID extracted and saved to your profile."
 
         StudentService._check_and_advance_status(db, student)
         db.commit()
@@ -191,11 +220,7 @@ class StudentService:
             "file_path": file_path,
             "ocr_status": ocr_status,
             "extracted_stpt_id": extracted_stpt_id,
-            "note": (
-                "STPT ID extracted and saved to your profile."
-                if extracted_stpt_id
-                else "Could not extract STPT ID automatically. An admin may update it manually."
-            )
+            "note": note
         }
 
     @staticmethod
