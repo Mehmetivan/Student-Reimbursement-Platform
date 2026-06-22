@@ -193,7 +193,7 @@ class ReceiptService:
         )
 
         # ── Layer 3: OCR — extract & validate STPT ID ────────────────────────
-        ocr_result = MultiOCRService.compare_all_ocr(permanent_path)
+        ocr_result = MultiOCRService.compare_two_ocr(permanent_path)
         consensus = ocr_result["consensus"]
         layer3_data = {
             "stpt_id": consensus["stpt_id"],

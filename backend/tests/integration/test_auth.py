@@ -263,3 +263,85 @@ class TestPasswordHashing:
         assert user.passwd.startswith("$2b$")
         assert len(user.passwd) == 60
         db.close()
+
+class TestChangePassword:
+    """Tests for PATCH /auth/change-password endpoint."""
+
+    def test_change_password_with_correct_current(self, client):
+        """
+        TEST CASE: Changing password with the correct current password must succeed.
+        WHY: This is the happy path — users must be able to update their own password.
+        """
+        client.post("/auth/register", json={"email": "pw@test.com", "password": "oldpass123"})
+        login = client.post(
+            "/auth/login",
+            data={"username": "pw@test.com", "password": "oldpass123"}
+        )
+        token = login.json()["access_token"]
+
+        response = client.patch(
+            "/auth/change-password",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"current_password": "oldpass123", "new_password": "newpass456"}
+        )
+        assert response.status_code == 200
+        assert "successfully" in response.json()["message"].lower()
+
+        new_login = client.post(
+            "/auth/login",
+            data={"username": "pw@test.com", "password": "newpass456"}
+        )
+        assert new_login.status_code == 200
+
+    def test_change_password_with_wrong_current(self, client):
+        """
+        TEST CASE: Password change with the wrong current password must be rejected.
+        WHY: This prevents an attacker who has stolen a session token from
+        changing the password without knowing the current one — protecting users
+        whose tokens may have been compromised.
+        """
+        client.post("/auth/register", json={"email": "pw2@test.com", "password": "correctpass"})
+        login = client.post(
+            "/auth/login",
+            data={"username": "pw2@test.com", "password": "correctpass"}
+        )
+        token = login.json()["access_token"]
+
+        response = client.patch(
+            "/auth/change-password",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"current_password": "wrongpass", "new_password": "newpass456"}
+        )
+        assert response.status_code == 401
+        assert "incorrect" in response.json()["detail"].lower()
+
+    def test_change_password_requires_authentication(self, client):
+        """
+        TEST CASE: Calling /auth/change-password without a token must return 401.
+        WHY: Defensive check — password changes must always require authentication.
+        """
+        response = client.patch(
+            "/auth/change-password",
+            json={"current_password": "any", "new_password": "newpass456"}
+        )
+        assert response.status_code == 401
+
+    def test_new_password_minimum_length(self, client):
+        """
+        TEST CASE: A new password shorter than 8 characters must be rejected.
+        WHY: Enforces a minimum security standard.
+        """
+        client.post("/auth/register", json={"email": "pw3@test.com", "password": "validpass"})
+        login = client.post(
+            "/auth/login",
+            data={"username": "pw3@test.com", "password": "validpass"}
+        )
+        token = login.json()["access_token"]
+
+        response = client.patch(
+            "/auth/change-password",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"current_password": "validpass", "new_password": "short"}
+        )
+        assert response.status_code == 400
+        assert "8 characters" in response.json()["detail"]

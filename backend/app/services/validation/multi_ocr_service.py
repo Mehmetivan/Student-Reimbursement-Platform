@@ -272,3 +272,57 @@ class MultiOCRService:
             if stpt_id:
                 return {"extracted_stpt_id": stpt_id, "confidence": conf, "raw_text": easyocr_result["raw_text"], "ocr_engine": "easyocr"}
         return {"extracted_stpt_id": None, "confidence": 0.0, "raw_text": google_result.get("raw_text", ""), "ocr_engine": "none"}
+
+    @staticmethod
+    def compare_two_ocr(file_path: Path) -> Dict:
+        """
+        Production OCR consensus using only EasyOCR and Google Vision.
+        Tesseract is excluded due to poor empirical accuracy and is only
+        used in the testing endpoints for comparison purposes.
+        """
+        logger.info(f"Starting 2-engine OCR comparison on: {file_path}")
+
+        easyocr_result = MultiOCRService.extract_text_easyocr(file_path)
+        google_vision_result = MultiOCRService.extract_text_google_vision(file_path)
+
+        easyocr_stpt, easyocr_conf = MultiOCRService.extract_stpt_id(easyocr_result["raw_text"])
+        google_stpt, google_conf = MultiOCRService.extract_stpt_id(google_vision_result["raw_text"])
+
+        # Apply engine reliability multipliers
+        easyocr_conf = round(easyocr_conf * 0.85, 3)
+        google_conf = round(google_conf * 1.0, 3)
+
+        easyocr_result["stpt_id_found"] = easyocr_stpt
+        easyocr_result["stpt_id_confidence"] = easyocr_conf
+        google_vision_result["stpt_id_found"] = google_stpt
+        google_vision_result["stpt_id_confidence"] = google_conf
+
+        # 2-engine consensus
+        both_agree = False
+        consensus_id = None
+
+        if easyocr_stpt and easyocr_stpt == google_stpt:
+            consensus_id = easyocr_stpt
+            both_agree = True
+            agreement_count = 2
+        else:
+            # No agreement — use higher confidence
+            if google_conf >= easyocr_conf:
+                consensus_id = google_stpt
+            else:
+                consensus_id = easyocr_stpt
+            agreement_count = 1
+
+        return {
+            "easyocr": easyocr_result,
+            "google_cloud_vision": google_vision_result,
+            # Empty tesseract entry for backward compatibility with code that reads it
+            "tesseract": {"raw_text": "", "success": False, "stpt_id_found": None, "stpt_id_confidence": 0.0},
+            "consensus": {
+                "stpt_id": consensus_id,
+                "agreement_count": agreement_count,
+                "total_engines": 2,
+                "all_agree": both_agree,
+                "majority_agree": both_agree
+            }
+        }
