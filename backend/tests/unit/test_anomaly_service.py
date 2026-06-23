@@ -74,7 +74,7 @@ class TestExtractReceiptIdFromOcr:
     def test_no_id_found_returns_none(self):
         """
         TEST CASE: When neither engine extracts an ID, return None with 0.0.
-        WHY: This case must be handled — the receipt cannot be analyzed
+        WHY: This case must be handled, the receipt cannot be analyzed
         in Layer 4 and is escalated to high risk in the calling pipeline.
         """
         extracted_id, confidence = AnomalyService.extract_receipt_id_from_ocr(
@@ -140,7 +140,7 @@ class TestCalculateRiskScore:
         """
         TEST CASE: When the receipt ID is a duplicate, risk score must be 1.0.
         WHY: An exact duplicate receipt ID is the strongest fraud signal
-        in Layer 4 — the same receipt has already been submitted.
+        in Layer 4, the same receipt has already been submitted.
         """
         risk, analysis = AnomalyService.calculate_risk_score(
             is_duplicate=True, similar_count=0, structure=self._structure()
@@ -151,7 +151,7 @@ class TestCalculateRiskScore:
     def test_solo_pattern_gets_high_risk(self):
         """
         TEST CASE: When no similar patterns exist (similar_count=0),
-        risk score is 0.8 — high risk for a never-before-seen pattern.
+        risk score is 0.8, high risk for a never-before-seen pattern.
         WHY: A receipt ID with no similar structure could be fabricated.
         It needs to be flagged for review until more similar receipts
         validate the pattern as legitimate.
@@ -164,7 +164,7 @@ class TestCalculateRiskScore:
 
     def test_pair_pattern_gets_medium_high_risk(self):
         """
-        TEST CASE: 1 similar receipt found → risk 0.6 (pair pattern).
+        TEST CASE: 1 similar receipt found -> risk 0.6 (pair pattern).
         WHY: One match starts validating the pattern but is not enough
         evidence on its own.
         """
@@ -176,7 +176,7 @@ class TestCalculateRiskScore:
 
     def test_triplet_pattern_gets_medium_risk(self):
         """
-        TEST CASE: 2 similar receipts found → risk 0.4 (triplet pattern).
+        TEST CASE: 2 similar receipts found -> risk 0.4 (triplet pattern).
         WHY: Pattern is emerging as legitimate as more receipts share it.
         """
         risk, analysis = AnomalyService.calculate_risk_score(
@@ -187,9 +187,9 @@ class TestCalculateRiskScore:
 
     def test_validated_cluster_gets_low_risk(self):
         """
-        TEST CASE: 3 or more similar receipts → risk 0.2 (validated cluster).
+        TEST CASE: 3 or more similar receipts -> risk 0.2 (validated cluster).
         WHY: A pattern shared by many receipts is well-established as legitimate
-        — likely a valid receipt format from the actual STPT system.
+        likely a valid receipt format from the actual STPT system.
         """
         risk, analysis = AnomalyService.calculate_risk_score(
             is_duplicate=False, similar_count=5, structure=self._structure()
@@ -204,7 +204,7 @@ class TestRarityScores:
     def test_prefix_rarity_decreases_with_more_matches(self):
         """
         TEST CASE: Prefix rarity score should decrease as more similar
-        receipts are found (rarer → higher score).
+        receipts are found (rarer -> higher score).
         WHY: A unique prefix is rarer and more suspicious. As more
         receipts share the prefix, rarity drops and so should the score.
         """
@@ -216,7 +216,7 @@ class TestRarityScores:
     def test_digram_rarity_decreases_with_more_matches(self):
         """
         TEST CASE: Digram rarity score follows the same decreasing pattern.
-        WHY: Same reasoning as prefix rarity — common patterns are less
+        WHY: Same reasoning as prefix rarity, common patterns are less
         suspicious than rare ones.
         """
         assert AnomalyService._calculate_digram_rarity(0) == 1.0
@@ -233,7 +233,7 @@ class TestCheckDuplicate:
         TEST CASE: When a receipt ID already exists in the database,
         check_duplicate must return True with the original receipt's UUID.
         WHY: Exact duplicate receipt IDs indicate the same physical receipt
-        being submitted twice — the strongest Layer 4 fraud signal.
+        being submitted twice, the strongest Layer 4 fraud signal.
         """
         existing_ocr = ReceiptOCR(
             receipt_id="existing-uuid-1",
@@ -351,7 +351,7 @@ class TestFindSimilarPatterns:
         and the same stand indicator (first 2 digits of prefix) must be
         flagged as similar.
         WHY: Receipts from the same STPT stand/machine share these
-        characteristics — this is the primary similarity signal.
+        characteristics, this is the primary similarity signal.
         """
         # Existing receipt in database
         _create_test_receipt_ocr(db_session, "uuid-1", "324-19204-128165")
@@ -368,7 +368,7 @@ class TestFindSimilarPatterns:
         """
         TEST CASE: Two receipts with the same structure but different stand
         indicators (different first 2 digits) should not be flagged as similar
-        based on structure alone — but may still match via n-gram overlap.
+        based on structure alone, but may still match via n-gram overlap.
         WHY: Different stand indicators suggest different physical machines
         or different vendors. The structure pattern alone is not enough.
         """
@@ -419,14 +419,14 @@ class TestFindSimilarPatterns:
 
 
 class TestRetroactiveRiskUpdate:
-    """Tests for the retroactive risk score reduction — Layer 4's core feature."""
+    """Tests for the retroactive risk score reduction, Layer 4's core feature."""
 
     def test_pair_pattern_reduces_solo_to_pair_risk(self, db_session):
         """
         TEST CASE: When a new receipt validates an existing solo pattern,
         the old receipt's risk must be retroactively reduced from 0.8 (solo)
         to 0.6 (pair).
-        WHY: This is the central design feature of Layer 4 — risk scores
+        WHY: This is the central design feature of Layer 4, risk scores
         are not final, they update as more evidence accumulates. The first
         receipt of a new pattern starts at high risk but should drop as
         similar receipts validate the pattern.
@@ -439,7 +439,7 @@ class TestRetroactiveRiskUpdate:
         ).first()
         assert old_anomaly.layer4_risk_score == 0.8
 
-        # Simulate a new similar receipt being added — call retroactive update
+        # Simulate a new similar receipt being added, call retroactive update
         similar_receipts = [{"receipt_id": "uuid-old"}]
         AnomalyService.retroactive_risk_update(db_session, similar_receipts)
 
@@ -525,7 +525,7 @@ class TestRetroactiveRiskUpdate:
         TEST CASE: When Layer 4 risk drops retroactively, the total risk
         assessment for the receipt must also be recalculated.
         WHY: Without this, the admin would see an outdated total risk score
-        that doesn't reflect the updated layer 4 evidence — the retroactive
+        that doesn't reflect the updated layer 4 evidence, the retroactive
         update would be invisible at the assessment level.
         """
         _create_test_receipt_ocr(db_session, "uuid-old", "324-19204-128165")

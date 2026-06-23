@@ -9,7 +9,7 @@ from .config import settings
 from .database.base import Base
 from .database.session import engine
 
-# Import all models so SQLAlchemy registers them before create_all
+
 from .database.models.receipt import Receipt
 from .database.models.receipt_anomalies import ReceiptAnomalies
 from .database.models.receipt_metadata import ReceiptMetadata
@@ -43,12 +43,12 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 
 
-# Serve uploaded files statically
+# Serving of uploaded files statically. To be upgraded in future work.
 os.makedirs(settings.RECEIPTS_DIR, exist_ok=True)
 os.makedirs(settings.DOCUMENTS_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# ── Routers ───────────────────────────────────────────────────────────────────
+#  Routers 
 
 app.include_router(auth.router)
 app.include_router(students.router)
@@ -56,7 +56,7 @@ app.include_router(admin.router)
 app.include_router(receipts.router)
 app.include_router(test_routes.router)
 
-# ── Health endpoints ──────────────────────────────────────────────────────────
+#  Health endpoints 
 
 @app.get("/")
 def root():
@@ -78,7 +78,7 @@ def health_check():
         }
     }
 
-# ── Run instructions ──────────────────────────────────────────────────────────
+#  Run instructions for terminal in case needed.
 #   cd backend
 #   venv\Scripts\activate          (Windows)
 #   source venv/bin/activate       (Mac/Linux)

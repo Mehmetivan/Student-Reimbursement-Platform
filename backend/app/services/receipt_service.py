@@ -23,7 +23,7 @@ from .validation.multi_ocr_service import MultiOCRService
 class ReceiptService:
     """
     Orchestrates the full 5-layer fraud detection pipeline for a receipt upload.
-    All business logic lives here — routers just call these methods.
+    All business logic lives here, routers just call these methods.
     """
 
     @staticmethod
@@ -55,7 +55,6 @@ class ReceiptService:
         Deletes any previous unconfirmed requests for this student first.
         Returns (request, receipt)
         """
-        # Delete any previous unconfirmed requests for this student
         from sqlalchemy import false as sa_false
         old_unconfirmed = db.query(RequestModel).filter(
             RequestModel.student_id == student_id,
@@ -139,7 +138,7 @@ class ReceiptService:
         Early-exits with action='rejected' if Layer 1 or Layer 4 detect fraud.
         """
 
-        # ── Layer 1: Hash & duplicate detection ──────────────────────────────
+        # Layer 1: Hash & duplicate detection 
         layer1_result = await HashService.validate_file_integrity(
             db=db,
             file_path=file_path,
@@ -162,7 +161,7 @@ class ReceiptService:
                 "database_saved": False
             }
 
-        # ── Layer 1 passed — persist the file and create/attach DB records ───
+        # Layer 1 passed, persist the file and create/attach DB records
         receipt_uuid, permanent_path, relative_file_path = ReceiptService._save_file_permanently(file_path)
 
         if existing_request_id:
@@ -184,7 +183,7 @@ class ReceiptService:
                 comment=comment
             )
 
-        # ── Layer 2: EXIF metadata analysis ──────────────────────────────────
+        # Layer 2: EXIF metadata analysis 
         layer2_result = ExifService.analyze_exif(permanent_path)
         FraudDetectionService.save_layer2_results(
             db=db,
@@ -192,7 +191,7 @@ class ReceiptService:
             layer2_analysis=layer2_result
         )
 
-        # ── Layer 3: OCR — extract & validate STPT ID ────────────────────────
+        # Layer 3: OCR extraction & STPT ID validation
         ocr_result = MultiOCRService.compare_two_ocr(permanent_path)
         consensus = ocr_result["consensus"]
         layer3_data = {
@@ -218,7 +217,7 @@ class ReceiptService:
             ocr_engine="consensus"
         )
 
-        # ── Layer 4: Receipt ID anomaly detection ─────────────────────────────
+        # Layer 4: Receipt ID anomaly detection
         layer4_result = AnomalyService.analyze_receipt_id(
             db=db,
             receipt_id=receipt_uuid,
@@ -247,7 +246,7 @@ class ReceiptService:
                 "database_saved": True
             }
 
-        # ── Layer 5: Final risk assessment ────────────────────────────────────
+        # Layer 5: Final risk assessment
         risk_assessment = FraudDetectionService.update_final_risk_assessment(
             db=db,
             receipt_id=receipt_uuid,
@@ -258,7 +257,7 @@ class ReceiptService:
 
         db.commit()
 
-        # ── Build response ────────────────────────────────────────────────────
+        # Build response
         total_risk = risk_assessment.total_risk_score
 
         if total_risk >= 0.8:

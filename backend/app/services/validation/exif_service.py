@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ExifService:
     """Layer 2: EXIF Metadata Analysis for fraud detection"""
 
-    # Software that definitively indicates post-capture editing — high risk
+    # Software that definitively indicates post-capture editing, high risk
     EDITING_SOFTWARE = [
         "photoshop",
         "gimp",
@@ -29,7 +29,7 @@ class ExifService:
         "inkscape",
     ]
 
-    # Legitimate camera processing software — NOT editing, do not flag
+    # Legitimate camera processing software, NOT editing, do not flag
     # These are written automatically by the camera/phone, not by the user
     CAMERA_SOFTWARE_WHITELIST = [
         "hdr+",
@@ -94,20 +94,14 @@ class ExifService:
 
     @staticmethod
     def check_editing_software(exif_data: Dict) -> Tuple[bool, Optional[str]]:
-        """
-        Check if image was edited with known photo editing software.
-        Uses a two-step approach:
-        1. If software is in the whitelist (camera processing) → not editing
-        2. If software is in the editing list → flag as edited
-        Returns: (is_edited, software_name)
-        """
+       
         software_fields = ['Software', 'ProcessingSoftware', 'HostComputer']
 
         for field in software_fields:
             if field in exif_data:
                 software = str(exif_data[field]).lower()
 
-                # Step 1: Check whitelist first — if it's camera software, skip
+                # Step 1: Check whitelist first, if it's camera software, skip
                 is_camera_software = any(
                     safe in software for safe in ExifService.CAMERA_SOFTWARE_WHITELIST
                 )
@@ -158,9 +152,6 @@ class ExifService:
         A gap larger than TIMESTAMP_GAP_SUSPICIOUS_DAYS suggests the file was
         opened and modified after being taken.
 
-        Note: Small gaps (< 5 days) are not flagged to account for normal behavior
-        such as cropping shortly before submission or delayed submission.
-
         Returns: (is_suspicious, gap_in_days)
         """
         dt_modified_str = exif_data.get('DateTime')
@@ -185,18 +176,7 @@ class ExifService:
 
     @staticmethod
     def analyze_exif(file_path: Path) -> Dict:
-        """
-        Complete Layer 2 EXIF analysis.
 
-        Risk scoring (additive, capped at 1.0):
-        - No EXIF at all:                    0.8  (high — legitimate photos always have EXIF)
-        - Known editing software:            +0.7 (Photopea, Photoshop, GIMP etc.)
-        - Timestamp gap > 5 days:            +0.1 (file modified significantly after capture)
-        - DateTime missing but orig present: +0.1 (Windows crop or similar stripping)
-        - Not from mobile camera:            +0.1 (receipts should come from phones)
-
-        All cases result in manual review flag, never automatic rejection.
-        """
         exif_data = ExifService.extract_exif(file_path)
 
         risk_score = 0.0
@@ -206,7 +186,7 @@ class ExifService:
 
         exif_exists = bool(exif_data)
 
-        # ── No EXIF ──────────────────────────────────────────────────────────
+        # No EXIF 
         if not exif_exists:
             risk_score += 0.8
             flags.append("no_exif_data")
@@ -230,35 +210,35 @@ class ExifService:
 
         exif_status = "present"
 
-        # ── Editing software ──────────────────────────────────────────────────
+        # Editing software 
         is_edited, software_name = ExifService.check_editing_software(exif_data)
         if is_edited:
             risk_score += 0.7
             flags.append("post_capture_editing_detected")
 
-        # ── Mobile camera check ───────────────────────────────────────────────
+        # Mobile camera check
         is_mobile, camera_model = ExifService.check_mobile_camera(exif_data)
         if not is_mobile:
             risk_score += 0.1
             flags.append("not_mobile_camera")
 
-        # ── Timestamp gap check ───────────────────────────────────────────────
+        # Timestamp gap check
         timestamp_inconsistency, gap_days = ExifService.check_timestamp_gap(exif_data)
         if timestamp_inconsistency:
             risk_score += 0.1
             flags.append(f"timestamp_gap_{gap_days}_days")
 
-        # ── DateTime missing but DateTimeOriginal present ─────────────────────
+        # DateTime missing but DateTimeOriginal present
         # Happens when tools like Windows Photos strip DateTime on save
         if 'DateTime' not in exif_data and 'DateTimeOriginal' in exif_data:
             risk_score += 0.1
             flags.append("missing_datetime")
 
-        # ── Base risk for clean legitimate photo ──────────────────────────────
+        # Base risk for clean legitimate photo
         if not flags:
             risk_score = 0.1  # Clean photo — minimal base risk
 
-        # ── Final assessment ──────────────────────────────────────────────────
+        # Final assessment
         risk_score = min(round(risk_score, 2), 1.0)
 
         if risk_score >= 0.7:

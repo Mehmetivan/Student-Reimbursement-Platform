@@ -22,7 +22,7 @@ from app.database.models.receipt_anomalies import ReceiptAnomalies
 from app.database.models.receipt_risk_assessment import ReceiptRiskAssessment
 
 
-# ── Test database setup ──────────────────────────────────────────────────────
+# Test database setup
 
 @pytest.fixture
 def client():
@@ -71,7 +71,7 @@ def admin_user(client):
     return {"email": "admin@test.com", "password": "adminpass"}
 
 
-# ── Tests ────────────────────────────────────────────────────────────────────
+# Tests
 
 class TestRegister:
     """Tests for the /auth/register endpoint."""

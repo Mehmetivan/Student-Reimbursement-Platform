@@ -62,8 +62,7 @@ class FraudDetectionService:
 
         stpt_matches = False
         if extracted_stpt_id and expected_stpt_id:
-            # extracted_stpt_id from receipt e.g. "555845"
-            # expected_stpt_id stored from card e.g. "00555845"
+
             # Substring check handles leading zeros that vary between card and receipt
             stpt_matches = (
                 extracted_stpt_id == expected_stpt_id or
@@ -128,8 +127,7 @@ class FraudDetectionService:
         anomaly_data.digram_rarity_score = layer4_analysis.get("digram_rarity_score", 0.0)
         anomaly_data.layer4_risk_score = layer4_analysis.get("layer4_risk_score", 0.0)
 
-        # Write extracted receipt ID back to receipt_ocr
-        # Layer 3 leaves it as None — Layer 4 is where it actually gets extracted
+        # Write extracted receipt ID back to receipt_ocr, Layer 3 leaves it as None for now since Layer 4 is where it actually gets extracted
         extracted_receipt_id = layer4_analysis.get("extracted_receipt_id")
         if extracted_receipt_id:
             ocr_record = db.query(ReceiptOCR).filter(
@@ -152,7 +150,6 @@ class FraudDetectionService:
     ) -> ReceiptRiskAssessment:
         """
         Calculate and save final risk assessment (Layer 5).
-        Uses a weighted sum: R = w1*H + w2*E + w3*O + w4*A
         Weights are defined in LAYER_WEIGHTS and reflect the relative
         importance of each layer's signal.
         """
@@ -184,15 +181,13 @@ class FraudDetectionService:
         )
         total_risk = min(round(total_risk, 4), 1.0)
 
-                # Critical signal overrides — certain fraud signals force high risk
-                # regardless of what the weighted sum produces.
-                # These cases always go to manual admin review.
+                # Critical signal overrides. Can be altered according to need and observation.
         if layer1_fraud:
             total_risk = max(total_risk, 0.9)   # exact file submitted by another student
         if layer2_risk >= 0.7:
             total_risk = max(total_risk, 0.75)  # no EXIF or editing software detected
         if layer3_risk >= 0.4:
-            total_risk = max(total_risk, 0.75)  # any STPT ID failure — not found or mismatch
+            total_risk = max(total_risk, 0.75)  # any STPT ID failure, not found or mismatch
         if layer4_risk >= 0.8:
             total_risk = max(total_risk, 0.75)  # solo pattern or exact duplicate receipt ID
 

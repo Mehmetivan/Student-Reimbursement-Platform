@@ -24,7 +24,7 @@ from app.database.models.receipt_anomalies import ReceiptAnomalies
 from app.database.models.receipt_risk_assessment import ReceiptRiskAssessment
 
 
-# ── Test setup ───────────────────────────────────────────────────────────────
+# Test setup
 
 @pytest.fixture
 def db_and_client():
@@ -86,7 +86,7 @@ def approved_student(db_and_client):
 
 @pytest.fixture
 def incomplete_student(db_and_client):
-    """Create an INCOMPLETE student — should NOT be able to submit receipts."""
+    """Create an INCOMPLETE student, should NOT be able to submit receipts."""
     db, client = db_and_client
     user = User(
         email="incomplete@test.com",
@@ -141,7 +141,7 @@ def _make_test_image() -> tuple[str, BytesIO, str]:
     return ("test.jpg", buf, "image/jpeg")
 
 
-# ── Submit endpoint tests ────────────────────────────────────────────────────
+# Submit endpoint tests
 
 class TestSubmitReceipt:
     """Tests for POST /receipts/submit."""
@@ -150,7 +150,7 @@ class TestSubmitReceipt:
         """
         TEST CASE: An approved student must be able to submit a receipt
         and receive a 200 with the pipeline result.
-        WHY: This is the primary student action — submitting a receipt
+        WHY: This is the primary student action, submitting a receipt
         for reimbursement. Without this working, the system is unusable.
         """
         token = approved_student["token"]
@@ -202,7 +202,7 @@ class TestSubmitReceipt:
     def test_unauthenticated_submit_fails(self, db_and_client):
         """
         TEST CASE: Submitting without an auth token must return 401.
-        WHY: Receipt submission is a privileged operation — only logged-in
+        WHY: Receipt submission is a privileged operation, only logged-in
         students can do it.
         """
         _, client = db_and_client
@@ -215,7 +215,7 @@ class TestSubmitReceipt:
 
     def test_invalid_file_extension_rejected(self, approved_student):
         """
-        TEST CASE: A file with disallowed extension (e.g., .txt) must return 400.
+        TEST CASE: A file with disallowed extension (e.g. .txt) must return 400.
         WHY: Only image files should be accepted. Allowing other types could
         lead to security issues or downstream pipeline failures.
         """
@@ -230,7 +230,7 @@ class TestSubmitReceipt:
         assert response.status_code == 400
 
 
-# ── Confirm endpoint tests ───────────────────────────────────────────────────
+# Confirm endpoint tests
 
 class TestConfirmReceipt:
     """Tests for PATCH /receipts/confirm/{request_id}."""
@@ -290,7 +290,7 @@ class TestConfirmReceipt:
         """
         TEST CASE: A student must not be able to confirm a request belonging
         to a different student. Should return 404.
-        WHY: Access control — students should only be able to manage their
+        WHY: Access control, students should only be able to manage their
         own submissions. Allowing confirmation of others' requests would
         be a severe authorization bug.
         """
@@ -331,7 +331,7 @@ class TestConfirmReceipt:
     def test_confirm_nonexistent_request(self, approved_student):
         """
         TEST CASE: Confirming a request_id that doesn't exist must return 404.
-        WHY: Defensive handling of bad input — frontend bugs or URL tampering
+        WHY: Defensive handling of bad input, frontend bugs or URL tampering
         should not crash the backend.
         """
         token = approved_student["token"]
@@ -344,7 +344,7 @@ class TestConfirmReceipt:
         assert response.status_code == 404
 
 
-# ── Resubmit endpoint tests ──────────────────────────────────────────────────
+# Resubmit endpoint tests
 
 class TestResubmitReceipt:
     """Tests for PATCH /receipts/resubmit/{request_id}."""
@@ -352,7 +352,7 @@ class TestResubmitReceipt:
     def test_cannot_resubmit_confirmed_request(self, approved_student):
         """
         TEST CASE: Once a request is confirmed and sent to admin, the student
-        must not be able to replace its receipt — should return 400.
+        must not be able to replace its receipt, should return 400.
         WHY: Replacing a confirmed receipt would let students change their
         submission after admin has already started reviewing it. This breaks
         the audit trail.
@@ -378,7 +378,7 @@ class TestResubmitReceipt:
     def test_cannot_resubmit_decided_request(self, approved_student):
         """
         TEST CASE: A request that has been approved or rejected by admin
-        cannot be resubmitted — should return 400.
+        cannot be resubmitted, should return 400.
         WHY: Once a request has a final decision, it's closed. Students must
         submit a new request rather than modify an already-decided one.
         """

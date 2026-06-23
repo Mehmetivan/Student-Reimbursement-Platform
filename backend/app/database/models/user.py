@@ -22,6 +22,8 @@ class User(Base):
     student = relationship("Student", back_populates="user", uselist=False)
 
 
+# The query under was created to be able to add an Admin to the database along with a password through the backend console. You must be in backend and activate the venv.
+
 """
 
 python -c "

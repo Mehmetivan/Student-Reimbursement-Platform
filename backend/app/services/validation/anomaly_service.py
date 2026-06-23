@@ -75,7 +75,7 @@ def _recalculate_final_risk(db: Session, receipt_id: str, new_layer4_risk: float
         factors["assessment"] = assessment
         risk_assessment.risk_factors = factors
 
-    logger.info(f"🔄 Updated risk_assessment for {receipt_id[:8]}...: total={total_risk}, assessment={assessment}")
+    logger.info(f" Updated risk_assessment for {receipt_id[:8]}...: total={total_risk}, assessment={assessment}")
 
 
 class AnomalyService:
@@ -104,7 +104,7 @@ class AnomalyService:
             if easyocr_id == google_id:
                 return easyocr_id, 0.95
             else:
-                logger.warning(f"⚠ OCR mismatch: EasyOCR={easyocr_id}, Google={google_id}")
+                logger.warning(f"OCR mismatch: EasyOCR={easyocr_id}, Google={google_id}")
                 return google_id, 0.6
         elif google_id:
             return google_id, 0.7
@@ -145,7 +145,7 @@ class AnomalyService:
             query = query.filter(ReceiptOCR.receipt_id != current_receipt_uuid)
         existing = query.first()
         if existing:
-            logger.warning(f"🚨 DUPLICATE: {receipt_id_value} already submitted by {existing.receipt_id}!")
+            logger.warning(f" DUPLICATE: {receipt_id_value} already submitted by {existing.receipt_id}!")
             return True, existing.receipt_id
         return False, None
 
@@ -271,7 +271,7 @@ class AnomalyService:
                 anomaly_record.prefix_rarity_score = AnomalyService._calculate_prefix_rarity(cluster_size - 1)
                 anomaly_record.digram_rarity_score = AnomalyService._calculate_digram_rarity(cluster_size - 1)
                 updated_count += 1
-                logger.info(f"🔄 Updated anomaly {similar['receipt_id'][:8]}...: {old_risk:.2f} → {new_risk:.2f}")
+                logger.info(f" Updated anomaly {similar['receipt_id'][:8]}...: {old_risk:.2f} → {new_risk:.2f}")
 
                 # Also update the final risk assessment for this receipt
                 _recalculate_final_risk(db, similar["receipt_id"], new_risk)
@@ -344,10 +344,10 @@ class AnomalyService:
     @staticmethod
     def _get_next_steps(assessment: str) -> str:
         if assessment == "duplicate_fraud":
-            return "⛔ Automatically rejected. Contact admin if you believe this is an error."
+            return " Automatically rejected. Contact admin if you believe this is an error."
         elif assessment == "solo_pattern":
-            return "🔍 Flagged for admin review. If legitimate, future similar receipts will validate this pattern."
+            return " Flagged for admin review. If legitimate, future similar receipts will validate this pattern."
         elif assessment in ["pair_pattern", "triplet_pattern"]:
-            return "⚠️ Flagged for admin review. Pattern is emerging but not yet fully validated."
+            return " Flagged for admin review. Pattern is emerging but not yet fully validated."
         else:
-            return "✅ Pattern validated. Receipt can be auto-approved (pending other layer checks)."
+            return " Pattern validated. Receipt can be auto-approved (pending other layer checks)."

@@ -52,7 +52,7 @@ class TestCheckEditingSoftware:
     def test_google_camera_is_not_flagged(self):
         """
         TEST CASE: Google Camera app must NOT be flagged.
-        WHY: This is the stock camera app on Pixel phones — its presence
+        WHY: This is the stock camera app on Pixel phones, its presence
         in metadata indicates a legitimate photo.
         """
         exif = {"Software": "Google Camera"}
@@ -140,7 +140,7 @@ class TestCheckTimestampGap:
         """
         TEST CASE: A 30-day gap between capture and last modification IS suspicious.
         WHY: A large gap suggests the file was opened and modified long after
-        being taken — a strong signal of post-capture manipulation.
+        being taken, a strong signal of post-capture manipulation.
         """
         exif = {
             "DateTime": "2026:06:15 14:30:00",
@@ -206,7 +206,7 @@ class TestAnalyzeExif:
         is_suspicious, _ = ExifService.check_timestamp_gap(exif_data)
 
         # Manually verify the risk would be: 0.7 + 0.1 + 0.1 = 0.9 (below cap)
-        # The cap test is in analyze_exif's min() call — verified by code review
+        # The cap test is in analyze_exif's min() call, verified by code review
         assert is_edited is True
         assert is_mobile is False
         assert is_suspicious is True

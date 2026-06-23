@@ -1,6 +1,6 @@
 # app/routers/test_routes.py
 # Development-only endpoints for testing individual fraud detection layers.
-# Remove in Phase 6 before production.
+# Excluded from test coverage and can be removed after deployment but is recommended to keep to be able to test each layer individually.
 import shutil
 import uuid
 from pathlib import Path
@@ -68,7 +68,7 @@ def _save_temp(file: UploadFile) -> Path:
     return temp_path
 
 
-# ── Layer 1 ───────────────────────────────────────────────────────────────────
+# Layer 1 
 
 @router.post("/hash-layer")
 async def test_hash_layer(
@@ -129,7 +129,7 @@ async def test_hash_layer(
             temp_path.unlink()
 
 
-# ── Layer 2 ───────────────────────────────────────────────────────────────────
+# Layer 2
 
 @router.post("/exif-layer")
 async def test_exif_layer(file: UploadFile = File(...)):
@@ -157,7 +157,7 @@ async def test_exif_layer(file: UploadFile = File(...)):
             temp_path.unlink()
 
 
-# ── Layer 3 (single engine) ───────────────────────────────────────────────────
+# Layer 3 (single engine)
 
 @router.post("/ocr-layer")
 async def test_ocr_layer(file: UploadFile = File(...)):
@@ -184,7 +184,7 @@ async def test_ocr_layer(file: UploadFile = File(...)):
             temp_path.unlink()
 
 
-# ── Layer 3 (all engines compared — STPT ID only) ────────────────────────────
+# Layer 3 (all engines compared — STPT ID only)
 
 @router.post("/compare-ocr")
 async def test_compare_ocr(file: UploadFile = File(...)):
@@ -216,7 +216,7 @@ async def test_compare_ocr(file: UploadFile = File(...)):
             temp_path.unlink()
 
 
-# ── Layer 3 + 4 (both IDs extracted and compared) ────────────────────────────
+# Layer 3 + 4 (both IDs extracted and compared)
 
 @router.post("/ocr-extraction")
 async def test_ocr_extraction(file: UploadFile = File(...)):
@@ -243,7 +243,7 @@ async def test_ocr_extraction(file: UploadFile = File(...)):
         google_stpt, google_stpt_conf = MultiOCRService.extract_stpt_id(google_result["raw_text"])
 
         # Extract receipt transaction ID from EasyOCR and Google Vision (Layer 4)
-        # Tesseract is not used for receipt ID extraction — only EasyOCR and Google Vision
+        # Tesseract is not used for receipt ID extraction, only EasyOCR and Google Vision
         easyocr_receipt_id, easyocr_receipt_conf = AnomalyService.extract_receipt_id_from_ocr(
             easyocr_result["raw_text"], ""
         )
@@ -256,7 +256,7 @@ async def test_ocr_extraction(file: UploadFile = File(...)):
             google_result["raw_text"]
         )
 
-        # STPT ID consensus (all 3 engines — same logic as compare-ocr)
+        # STPT ID consensus (all 3 engines, same logic as compare-ocr)
         all_agree = False
         majority_agree = False
         stpt_consensus = None
@@ -376,7 +376,7 @@ async def test_ocr_extraction(file: UploadFile = File(...)):
                 ]) / 3
             },
 
-            # Summary for thesis
+            # Summary for research
             "thesis_analysis": {
                 "engines_found_stpt_id": sum([
                     tesseract_stpt is not None,
@@ -397,7 +397,7 @@ async def test_ocr_extraction(file: UploadFile = File(...)):
             temp_path.unlink()
 
 
-# ── Layer 4 ───────────────────────────────────────────────────────────────────
+# Layer 4
 
 @router.post("/anomaly-layer")
 async def test_anomaly_layer(
@@ -489,7 +489,7 @@ async def test_anomaly_layer(
             temp_path.unlink()
 
 
-# ── All layers combined ───────────────────────────────────────────────────────
+# All layers combined
 
 @router.post("/combined-layers")
 async def test_combined_layers(
@@ -519,4 +519,4 @@ async def test_combined_layers(
     finally:
         if temp_path.exists():
             temp_path.unlink()
-# This file already exists from earlier build
+

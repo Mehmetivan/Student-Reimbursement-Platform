@@ -22,7 +22,7 @@ from app.database.models.receipt_anomalies import ReceiptAnomalies
 from app.database.models.receipt_risk_assessment import ReceiptRiskAssessment
 
 
-# ── Test setup ───────────────────────────────────────────────────────────────
+#Test setup
 
 @pytest.fixture
 def db_and_client():
@@ -114,7 +114,7 @@ def _create_pending_student(db, email="pending@test.com"):
     return student
 
 
-# ── Authorization tests ──────────────────────────────────────────────────────
+# Authorization tests
 
 class TestAdminAuthorization:
     """Tests verifying that admin endpoints reject non-admin access."""
@@ -157,7 +157,7 @@ class TestAdminAuthorization:
         assert response.status_code == 200
 
 
-# ── List & view students ─────────────────────────────────────────────────────
+# List & view students
 
 class TestListStudents:
     """Tests for GET /admin/students."""
@@ -265,7 +265,7 @@ class TestGetStudent:
         assert response.status_code == 404
 
 
-# ── Student account decisions ────────────────────────────────────────────────
+# Student account decisions
 
 class TestDecideStudentAccount:
     """Tests for PATCH /admin/students/{id}/decision."""
@@ -347,7 +347,7 @@ class TestDecideStudentAccount:
         assert response.status_code == 400
 
 
-# ── Edit student ─────────────────────────────────────────────────────────────
+# Edit student
 
 class TestEditStudent:
     """Tests for PATCH /admin/students/{id}/edit."""
@@ -398,7 +398,7 @@ class TestEditStudent:
         assert response.json()["iban"] == original_iban
 
 
-# ── Request list & decisions ─────────────────────────────────────────────────
+# Request list & decisions
 
 class TestListRequests:
     """Tests for GET /admin/requests."""

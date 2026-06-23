@@ -15,7 +15,7 @@ from .validation.multi_ocr_service import MultiOCRService
 
 class StudentService:
 
-    # ── Profile ───────────────────────────────────────────────────────────────
+    # Profile 
 
     @staticmethod
     def get_profile(db: Session, student: Student) -> dict:
@@ -66,7 +66,6 @@ class StudentService:
         """
         If all 3 documents are uploaded and name + IBAN are filled in,
         automatically advance status to pending_approval.
-        Only advances from INCOMPLETE — doesn't override admin decisions.
         """
         if student.account_status != AccountStatus.INCOMPLETE:
             return
@@ -86,7 +85,7 @@ class StudentService:
         if has_all_docs and has_profile:
             student.account_status = AccountStatus.PENDING_APPROVAL
 
-    # ── Document upload ───────────────────────────────────────────────────────
+    #Document upload
 
     @staticmethod
     def _save_document_file(file_path: Path, student_id: int, doc_type: DocumentType) -> str:
@@ -138,7 +137,7 @@ class StudentService:
         temp_path: Path
     ) -> dict:
         """
-        Store the student ID photo. No OCR — staff reviews manually.
+        Store the student ID photo.
         """
         file_path = StudentService._save_document_file(
             temp_path, student.student_id, DocumentType.STUDENT_ID
@@ -173,8 +172,7 @@ class StudentService:
             db, student.student_id, DocumentType.STPT_CARD, file_path
         )
 
-        # Run OCR on the card to extract STPT customer ID
-        # Uses dedicated card extraction (not the receipt pipeline)
+       
         ocr_result = MultiOCRService.extract_card_id(Path(file_path))
         extracted_stpt_id = ocr_result.get("extracted_stpt_id")
 

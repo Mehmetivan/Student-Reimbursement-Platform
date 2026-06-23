@@ -9,7 +9,7 @@ from app.database.models.student import Student
 from app.database.models.user import User, UserRole
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
+# Fixtures 
 
 @pytest.fixture
 def temp_file_factory():
@@ -72,7 +72,7 @@ def _create_receipt(db_session, student_id: int, sha256_hash: str):
     db_session.commit()
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
+# Tests
 
 class TestComputeSha256:
     """Tests for the SHA-256 hash computation."""
@@ -81,7 +81,7 @@ class TestComputeSha256:
         """
         TEST CASE: Same file content must produce the same hash every time.
         WHY: If the hash changes between calls, the entire duplicate detection
-        layer is broken — we could never reliably identify duplicates.
+        layer is broken, we could never reliably identify duplicates.
         """
         path = temp_file_factory(b"test receipt content")
         hash1 = HashService.compute_sha256(path)
@@ -91,7 +91,7 @@ class TestComputeSha256:
     def test_different_files_produce_different_hashes(self, temp_file_factory):
         """
         TEST CASE: Two files with different content must produce different hashes.
-        WHY: Sanity check — if different files produced the same hash, we'd be
+        WHY: Sanity check, if different files produced the same hash, we'd be
         flagging legitimate unique submissions as duplicates.
         """
         path_a = temp_file_factory(b"receipt A content")
@@ -103,7 +103,7 @@ class TestComputeSha256:
     def test_hash_has_correct_length(self, temp_file_factory):
         """
         TEST CASE: SHA-256 hash should always be 64 hexadecimal characters.
-        WHY: Verifies the hash format is consistent — important for database
+        WHY: Verifies the hash format is consistent, important for database
         column constraints and equality comparisons.
         """
         path = temp_file_factory(b"any content")
@@ -136,7 +136,7 @@ class TestValidateFileIntegrity:
         TEST CASE: When the same student submits the same file twice,
         the second submission must be flagged as is_duplicate=True
         but fraud_suspected=False (not malicious, just accidental).
-        WHY: Self-duplicates are common mistakes — they should be blocked
+        WHY: Self-duplicates are common mistakes, they should be blocked
         but not treated as fraud since the student didn't try to steal another's receipt.
         """
         path = temp_file_factory(b"my receipt content")
@@ -157,7 +157,7 @@ class TestValidateFileIntegrity:
         """
         TEST CASE: When student B submits a file that student A already submitted,
         student B's submission must be flagged as fraud_suspected=True.
-        WHY: This is the most important security check — it catches a student
+        WHY: This is the most important security check, it catches a student
         attempting to reuse someone else's receipt for reimbursement.
         """
         path = temp_file_factory(b"shared receipt content")
@@ -180,7 +180,7 @@ class TestValidateFileIntegrity:
         TEST CASE: The result dict must always contain the sha256_hash field
         regardless of duplicate status.
         WHY: Downstream layers and database storage rely on this field
-        always being present — if it's missing the pipeline crashes.
+        always being present, if it's missing the pipeline crashes.
         """
         path = temp_file_factory(b"test content")
         result = await HashService.validate_file_integrity(

@@ -15,7 +15,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class AuthService:
 
-    # ── Password helpers ──────────────────────────────────────────────────────
+    # Password helpers 
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -25,7 +25,7 @@ class AuthService:
     def verify_password(plain: str, hashed: str) -> bool:
         return pwd_context.verify(plain, hashed)
 
-    # ── JWT helpers ───────────────────────────────────────────────────────────
+    # JWT helpers
 
     @staticmethod
     def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -43,7 +43,7 @@ class AuthService:
         except JWTError:
             return None
 
-    # ── Register ──────────────────────────────────────────────────────────────
+    # Register 
 
     @staticmethod
     def register_student(db: Session, email: str, password: str) -> dict:
@@ -63,7 +63,7 @@ class AuthService:
         db.add(user)
         db.flush()  # get user.account_id without committing yet
 
-        # Create Student (profile — empty for now, filled in Phase 3)
+        # Create Student
         student = Student(
             user_id=user.account_id,
             email=email,
@@ -82,7 +82,7 @@ class AuthService:
             "account_status": student.account_status
         }
 
-    # ── Login ─────────────────────────────────────────────────────────────────
+    # Login 
 
     @staticmethod
     def login(db: Session, email: str, password: str) -> dict:
@@ -102,8 +102,7 @@ class AuthService:
             "role": user.role
         }
 
-        # For students, include student_id in token so we don't need
-        # an extra DB query on every protected request
+        # For students, included the student_id in token so that an extra DB query on every protected request isnt needed.
         if user.role == UserRole.STUDENT and user.student:
             payload["student_id"] = user.student.student_id
             payload["account_status"] = user.student.account_status
@@ -116,7 +115,7 @@ class AuthService:
             "role": user.role
         }
 
-    # ── Get user from token ───────────────────────────────────────────────────
+    # Get user from token 
 
     @staticmethod
     def get_user_from_token(db: Session, token: str) -> Optional[User]:

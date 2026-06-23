@@ -9,7 +9,7 @@ from app.database.models.receipt import Receipt
 from app.database.models.receipt_risk_assessment import ReceiptRiskAssessment
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# Helpers
 
 def _create_student(db, email="s@test.com"):
     """Create a student and return their record."""
@@ -63,7 +63,7 @@ def _create_receipt_with_risk(db, request_id, student_id, total_risk=0.5, assess
     return receipt
 
 
-# ── Tests ────────────────────────────────────────────────────────────────────
+# Tests
 
 class TestFormatRequest:
     """Tests for the _format_request helper."""
@@ -71,7 +71,7 @@ class TestFormatRequest:
     def test_format_includes_all_basic_fields(self, db_session):
         """
         TEST CASE: The formatted dict must include all fields the frontend needs.
-        WHY: The frontend ReimbursementRequest type expects specific fields —
+        WHY: The frontend ReimbursementRequest type expects specific fields,
         missing fields would cause display bugs in the request list and detail pages.
         """
         student = _create_student(db_session)
@@ -181,7 +181,7 @@ class TestGetStudentRequests:
     def test_invalid_status_is_ignored(self, db_session):
         """
         TEST CASE: An invalid status string in the filter should not crash
-        — instead, all requests are returned.
+        but instead, all requests are returned.
         WHY: Defensive handling of bad input prevents the requests page
         from crashing if the frontend ever sends a typo.
         """
@@ -325,7 +325,7 @@ class TestDecideRequest:
         """
         TEST CASE: Once a request is approved or rejected, further decision
         attempts must be rejected.
-        WHY: Decisions should be final — re-deciding could create audit
+        WHY: Decisions should be final, re-deciding could create audit
         confusion and inconsistent reimbursement records.
         """
         student = _create_student(db_session)
@@ -341,7 +341,7 @@ class TestDecideRequest:
         """
         TEST CASE: Decision strings other than 'approve' or 'reject' must
         return an error.
-        WHY: Defensive input validation — the frontend should only ever
+        WHY: Defensive input validation, the frontend should only ever
         send these two values, but the backend must guard against bad input.
         """
         student = _create_student(db_session)
@@ -356,7 +356,7 @@ class TestDecideRequest:
         """
         TEST CASE: Trying to decide a request_id that doesn't exist
         must return an error.
-        WHY: Defensive handling of bad input — URL tampering or stale
+        WHY: Defensive handling of bad input, URL tampering or stale
         frontend state should not crash the backend.
         """
         result = RequestService.decide_request(

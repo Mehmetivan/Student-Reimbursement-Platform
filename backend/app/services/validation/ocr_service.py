@@ -47,9 +47,7 @@ class OCRService:
     def extract_stpt_id(text: str) -> Tuple[Optional[str], float]:
         """
         Extract STPT card ID from receipt text
-        Looking for pattern: "SERIE CARD:123456" where ID is 6-10 digits
         Handles OCR errors like missing 'D', missing spaces, missing colons
-        
         Returns: (stpt_id, confidence)
         """
         logger.info(f"Searching for STPT ID in text: {text[:200]}...")  # Log first 200 chars
@@ -57,7 +55,7 @@ class OCRService:
         # Create a version without spaces for flexible matching
         text_no_spaces = text.replace(' ', '').replace('\n', '').replace('\r', '').replace('\t', '')
         
-        # Pattern variations to match - well-formatted text
+        # Pattern variations to match, well-formatted text
         # Looking for "SERIE CARD" (or variations) followed by digits only
         patterns_formatted = [
             (r'SERIE\s*CARD\s*[:\-]?\s*(\d{6,10})', 0.95, "SERIE CARD (perfect)"),      # SERIE CARD:123456
@@ -102,10 +100,7 @@ class OCRService:
     @staticmethod
     def extract_receipt_id(text: str) -> Tuple[Optional[str], float]:
         """
-        Extract receipt transaction ID from text
-        Common patterns: TR20250215001234, REC-123456, etc.
-        Note: Receipt IDs are typically alphanumeric (letters + digits)
-        
+        Extract receipt transaction ID from text 
         Returns: (receipt_id, confidence)
         """
         logger.info(f"Searching for Receipt ID in text...")
@@ -122,10 +117,10 @@ class OCRService:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 receipt_id = match.group(1)
-                logger.info(f"✓ Found Receipt ID: {receipt_id} using pattern '{label}' (confidence: {confidence})")
+                logger.info(f" Found Receipt ID: {receipt_id} using pattern '{label}' (confidence: {confidence})")
                 return receipt_id, confidence
         
-        logger.warning("✗ No Receipt ID pattern matched")
+        logger.warning(" No Receipt ID pattern matched")
         return None, 0.0
     
     @staticmethod
