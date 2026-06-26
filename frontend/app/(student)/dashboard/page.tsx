@@ -64,12 +64,6 @@ export default function StudentDashboard() {
       icon: XCircle,
       color: 'bg-red-50 text-red-600',
     },
-    {
-      label: t('statusUnderReview'),
-      value: requests.filter((r) => r.status === 'under_review').length,
-      icon: AlertCircle,
-      color: 'bg-blue-50 text-blue-600',
-    },
   ]
 
   return (

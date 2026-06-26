@@ -45,7 +45,7 @@ export default function LandingPage() {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 bg-violet-50 text-violet-700 px-3 py-1.5 rounded-full text-sm font-medium mb-6">
             <Shield className="h-3.5 w-3.5" />
-            Universitatea de Vest din Timișoara
+            Student Reimbursement Platform
           </div>
           <h1 className="text-5xl font-bold text-gray-900 leading-tight mb-4">
             {t('landingTitle')}
@@ -125,7 +125,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
           <Logo size="sm" />
           <p className="text-sm text-gray-400">
-            Student Reimbursement Portal — Universitatea de Vest din Timișoara
+            Student Reimbursement Portal
           </p>
         </div>
       </footer>

@@ -1,6 +1,6 @@
 // lib/api.ts
 // All API calls to the FastAPI backend in one place.
-// Every page/hook imports from here — never writes fetch() directly.
+// Every page/hook imports from here, never writes fetch() directly.
 
 import axios from 'axios'
 import type {
@@ -14,7 +14,7 @@ import type {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Axios instance — attaches JWT token to every request automatically
+// Axios instance, attaches JWT token to every request automatically
 export const api = axios.create({
   baseURL: BASE_URL,
 })
@@ -43,7 +43,7 @@ api.interceptors.response.use(
   }
 )
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// Auth 
 
 export const authApi = {
   register: async (email: string, password: string): Promise<RegisterResponse> => {
@@ -67,7 +67,7 @@ export const authApi = {
   },
 }
 
-// ── Student ───────────────────────────────────────────────────────────────────
+// Student
 
 export const studentApi = {
   getProfile: async (): Promise<StudentProfile> => {
@@ -133,7 +133,7 @@ export const studentApi = {
   },
 }
 
-// ── Admin ─────────────────────────────────────────────────────────────────────
+// Admin 
 
 export const adminApi = {
   getStudents: async (status?: string): Promise<StudentDetail[]> => {
