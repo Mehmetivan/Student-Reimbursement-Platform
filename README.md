@@ -169,28 +169,32 @@ pytest tests/integration/ -v
 
 ## Project structure
 
+## Project structure
+
+```text
 project/
 ├── backend/
 │   ├── app/
-│   │   ├── routers/             FastAPI route handlers
-│   │   ├── services/            Business logic and fraud detection layers
-│   │   │   └── validation/      Hash, EXIF, OCR, and anomaly services
+│   │   ├── routers/             # FastAPI route handlers
+│   │   ├── services/            # Business logic and fraud detection layers
+│   │   │   └── validation/      # Hash, EXIF, OCR, and anomaly services
 │   │   ├── database/
-│   │   │   └── models/          SQLAlchemy ORM models
-│   │   ├── schemas/             Pydantic request/response schemas
-│   │   └── main.py              Application entry point
+│   │   │   └── models/          # SQLAlchemy ORM models
+│   │   ├── schemas/             # Pydantic request/response schemas
+│   │   └── main.py              # Application entry point
 │   ├── tests/
-│   │   ├── unit/                Unit tests
-│   │   └── integration/         Integration tests
-│   ├── uploads/                 Uploaded files (created at runtime)
+│   │   ├── unit/                # Unit tests
+│   │   └── integration/         # Integration tests
+│   ├── uploads/                 # Uploaded files (created at runtime)
 │   └── requirements.txt
 ├── frontend/
-│   ├── app/                     Next.js pages and routes
-│   ├── components/              React components
-│   ├── lib/                     API client and utilities
+│   ├── app/                     # Next.js pages and routes
+│   ├── components/              # React components
+│   ├── lib/                     # API client and utilities
 │   └── package.json
-├── start.bat                    Helper script to launch both servers
+├── start.bat                    # Helper script to launch both servers
 └── README.md
+```
 
 
 ## Notes
